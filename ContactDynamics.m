@@ -17,6 +17,7 @@ classdef ContactDynamics < LagrangianModel
     methods (Abstract)
        [n,a] = contactNormal(self,q);
        J = contactJacobian(self,q);
+    %% -------------- VISUALIZATION METHODS ---------------
     end
     methods
         function [time,X,F, r] = simulate(self,x0,T)
