@@ -40,8 +40,8 @@ classdef LagrangianModel < handle
             %   NOTE: Here, I use explicit Euler integration to simulate
             %   the model forward. This scheme is both numerically unstable
             %   and does not preserve the energy/momenta of the system.
-            %   Simulations are likely to be very inaccurate, especially at
-            %   longer time horizons.
+            %   Simulations are likely to be very inaccurate, especially
+            %   over longer time horizons.
             f = figure();
             ax = gca;
             nQ = numel(x)/2;
@@ -50,7 +50,10 @@ classdef LagrangianModel < handle
             % Run while the figure is open
             while(ishandle(f))
                 xdot = self.dynamics(x);
-                x = x + dt*xdot;
+                % Use a sympletic euler integration scheme
+                %x(nQ+1:end) = xdot(nQ+1:end)*dt + x(nQ+1:end);
+                %x(1:nQ) = x(1:nQ) + x(nQ+1:end)*dt;
+                x = x + dt*xdot;   % Explicit Euler - Do NOT USE
                 % Update the figure
                 [xp,yp] = self.draw(x(1:nQ));
                 set(get(ax,'Children'),'XData',xp,'YData',yp);
