@@ -48,17 +48,20 @@ classdef LagrangianModel < handle
             % Draw the ininitial figure
             self.draw(x(1:nQ), ax);
             % Run while the figure is open
+            t = 0;
             while(ishandle(f))
                 xdot = self.dynamics(x);
                 % Use a sympletic euler integration scheme
-                %x(nQ+1:end) = xdot(nQ+1:end)*dt + x(nQ+1:end);
-                %x(1:nQ) = x(1:nQ) + x(nQ+1:end)*dt;
-                x = x + dt*xdot;   % Explicit Euler - Do NOT USE
+                x(nQ+1:end) = xdot(nQ+1:end)*dt + x(nQ+1:end);
+                x(1:nQ) = x(1:nQ) + x(nQ+1:end)*dt;
+                %x = x + dt*xdot;   % Explicit Euler - Do NOT USE
                 % Update the figure
                 [xp,yp] = self.draw(x(1:nQ));
                 set(get(ax,'Children'),'XData',xp,'YData',yp);
                 drawnow;
+                t = t + dt;
             end
+            fprintf('Total Simulation Time: %f seconds\n',t);
         end
     end
 end

@@ -6,7 +6,7 @@ classdef ContactDynamics < LagrangianModel
     end
     properties
        contactSolver = "Path"; 
-       sigma = 10;
+       sigma = 1;
     end
     properties (Hidden, Access=private)
        solver; 
@@ -16,10 +16,34 @@ classdef ContactDynamics < LagrangianModel
     end
     methods (Abstract)
        [n,a] = contactNormal(self,q);
-       J = contactJacobian(self,q);
+       [Jn, Jt] = contactJacobian(self,q);
     %% -------------- VISUALIZATION METHODS ---------------
     end
     methods
+        function animate(self,x)
+            % Check the solver
+            self.checkSolver();
+            % Set up the figure
+            f = figure();
+            ax = gca;
+            nQ = numel(x)/2;
+            % Draw the initial figure
+            self.draw(x(1:nQ), ax);
+            % Run while the figure handle is open
+            t = 0;
+            while (ishandle(f))
+               F = self.contactForce(x);
+               x = self.implicitDynamics(x,F);
+               hold(ax,'off');
+               self.draw(x(1:nQ),ax);
+               drawnow;
+               t = t + 1;
+            end
+            t = t*self.timestep;
+            fprintf('Total Simulation Time: %f seconds\n',t);
+            
+           
+        end
         function [time,X,F, r] = simulate(self,x0,T)
             self.checkSolver();
             % Pre-initialize arrays
@@ -98,7 +122,7 @@ classdef ContactDynamics < LagrangianModel
             
             Mn = M\Jn;
             Mt = M\Jt;
-           
+                       
             P(1:numN, 1:numN) = normals*Mn;
             P(1:numN, numN+1:numN+numT) = normals*Mt;
             P(numN+1:numN+numT, 1:numN) = Jt' * Mn;

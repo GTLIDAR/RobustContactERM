@@ -1,4 +1,4 @@
-classdef FreeCartDoublePendulum < LagrangianModel
+classdef FreeCartDoublePendulum < ContactDynamics
     
     properties
         blockMass (1,1) double {mustBePositive, mustBeFinite} = 10;
@@ -6,6 +6,8 @@ classdef FreeCartDoublePendulum < LagrangianModel
         lengths(2,1) double {mustBeNonnegative, mustBeFinite} = [1 1];
         com(2,1) double = [1/2, 1/2];
         inertias(2,1) double = [1, 1];
+        timestep = 0.0025;
+        friction  = 0.5;
     end
     properties (Hidden)
         block_width(1,1) double = 1;
@@ -68,8 +70,8 @@ methods
        J(1:2,1:2) = eye(2);
        J(1,4) = self.lengths(2)*cos(q(3)+q(4));
        J(2,4) = self.lengths(2)*sin(q(3)+q(4));
-       J(1,3) = self.lengths(1)*cos(q(2)) + J(1,4);
-       J(2,3) = self.lengths(1)*sin(q(2)) + J(2,4);
+       J(1,3) = self.lengths(1)*cos(q(3)) + J(1,4);
+       J(2,3) = self.lengths(1)*sin(q(3)) + J(2,4);
     end
     %% ---------------- DYNAMIC PROPERTIES --------------------- %%
     function M = inertiaMatrix(self, q)
@@ -133,6 +135,19 @@ methods
     function B = inputMatrix(~,~)
        B = eye(4); 
     end
+    %% ---------------- CONTACT PARAMETERS --------------------- %%
+    function [n, alpha] = contactNormal(self,q)
+        n = [0, 1, self.lengths(1)*sin(q(3)+q(4)) + self.lengths(2)*sin(q(3)+q(4)), self.lengths(2)*sin(q(3)+q(4))];
+        [~,y] = self.positions(q);
+        alpha = n*q - y(end);
+    end
+    function [Jn,Jt] = contactJacobian(self,q)
+        dH = [0 1 -1; 
+              1 0  0];
+        J = self.jacobian(q)' * dH;
+        Jn = J(:,1);
+        Jt = J(:,2:3);
+    end
     %% -------------- VISUALIZATION METHODS -------------------- %%
     function [x,y] = draw(self, q, ax) 
         % First get the positions of all the joint centers
@@ -143,6 +158,16 @@ methods
         % Create a single data vector for plotting
         x = [block_x, nan, x];
         y = [block_y, nan, y];
+        % Set x and y limits
+        xrange = sum(self.lengths) + self.block_width;
+        yrange = sum(self.lengths) + self.block_height;
+        xlims = [x(1)-xrange,x(1)+xrange];
+        ylims = [y(1)-yrange, y(1) + yrange];
+        % Create the floor
+        xfloor= xlims;
+        yfloor = [0,0];
+        x = [x,nan,xfloor];
+        y = [y,nan,yfloor];
         % Plot the data
         if nargout == 0
             if nargin == 3
@@ -150,13 +175,9 @@ methods
             else
                 figure();
                 plot(x,y,'LineWidth',2);
-            end
-            % Set x and y limits
-            xrange = sum(self.lengths) + self.block_width;
-            yrange = sum(self.lengths) + self.block_height;
-            
-            xlim([x(1) - xrange, x(1) + xrange]);
-            ylim([y(1) - yrange, y(1) + yrange]);
+            end           
+            xlim(xlims);
+            ylim(ylims);
             
         end
     end
