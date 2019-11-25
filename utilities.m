@@ -9,7 +9,7 @@ classdef utilities
             
             [~,N] = size(seq);
             
-            if nargin == 4
+            if nargin >= 4
                 w = VideoWriter(savename);
                 open(w);
             end

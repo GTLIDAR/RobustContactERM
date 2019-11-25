@@ -137,7 +137,7 @@ methods
     end
     %% ---------------- CONTACT PARAMETERS --------------------- %%
     function [n, alpha] = contactNormal(self,q)
-        n = [0, 1, self.lengths(1)*sin(q(3)+q(4)) + self.lengths(2)*sin(q(3)+q(4)), self.lengths(2)*sin(q(3)+q(4))];
+        n = [0, 1, self.lengths(1)*sin(q(3)) + self.lengths(2)*sin(q(3)+q(4)), self.lengths(2)*sin(q(3)+q(4))];
         [~,y] = self.positions(q);
         alpha = n*q - y(end);
     end

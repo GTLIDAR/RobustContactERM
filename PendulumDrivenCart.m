@@ -53,7 +53,7 @@ methods
     end
     %% ------------ CONTACT PROPERTIES ------------------------- %%
     function [n, alpha] = contactNormal(self,q)
-        n = [0, self.lengths(1)*sin(q(2)+q(3)) + self.lengths(2)*sin(q(2)+q(3)), self.lengths(2)*sin(q(2)+q(3))];
+        n = [0, self.lengths(1)*sin(q(2)) + self.lengths(2)*sin(q(2)+q(3)), self.lengths(2)*sin(q(2)+q(3))];
         [~,y] = self.positions(q);
         alpha = n*q - y(end);
     end
