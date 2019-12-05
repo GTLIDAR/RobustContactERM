@@ -109,7 +109,439 @@ classdef ContactDynamics < LagrangianModel
             z = zeros(numT + 2*numN, 1);
             % Calculate the offset vector
             tau = qdot - M\(C*qdot + N)*self.timestep;
+            z(1:numN) = Jn'*tau + (normals*q - alphas)/self.timestep;function [f,r] = contactForce(self,x)
+            % Use an LCP (a type of QP) to solve for the contact forces
+            
+            % Separate the configuration and velocity
+            L = length(x);
+            q = x(1:L/2);
+            qdot = x(L/2+1:end);
+            % Simulate the configuration using constant velocity
+            qhat = q + self.timestep*qdot;
+            % Get the system properties
+            M = self.inertiaMatrix(qhat);
+            C = self.coriolisMatrix(qhat,qdot);
+            N = self.gravityMatrix(qhat);
+            [Jn, Jt] = self.contactJacobian(qhat);
+            [normals,alphas] = self.contactNormal(qhat);
+            % Pre-initialize the arrays
+            numT = size(Jt,2);
+            numN = size(Jn,2);
+            z = zeros(numT + 2*numN, 1);function [f,r] = contactForce(self,x)
+            % Use an LCP (a type of QP) to solve for the contact forces
+            
+            % Separate the configuration and velocity
+            L = length(x);
+            q = x(1:L/2);
+            qdot = x(L/2+1:end);
+            % Simulate the configuration using constant velocity
+            qhat = q + self.timestep*qdot;function [f,r] = contactForce(self,x)
+            % Use an LCP (a type of QP) to solve for the contact forces
+            
+            % Separate the configuration and velocity
+            L = length(x);
+            q = x(1:L/2);
+            qdot = x(L/2+1:end);
+            % Simulate the configuration using constant velocity
+            qhat = q + self.timestep*qdot;
+            % Get the system properties
+            M = self.inertiaMatrix(qhat);
+            C = self.coriolisMatrix(qhat,qdot);
+            N = self.gravityMatrix(qhat);function [f,r] = contactForce(self,x)
+            % Use an LCP (a type of QP) to solve for the contact forces
+            
+            % Separate the configuration and velocity
+            L = length(x);
+            q = x(1:L/2);
+            qdot = x(L/2+1:end);
+            % Simulate the configuration using constant velocity
+            qhat = q + self.timestep*qdot;
+            % Get the system properties
+            M = self.inertiaMatrix(qhat);
+            C = self.coriolisMatrix(qhat,qdot);
+            N = self.gravityMatrix(qhat);
+            [Jn, Jt] = self.contactJacobian(qhat);
+            [normals,alphas] = self.contactNormal(qhat);
+            % Pre-initialize the arrays
+            numT = size(Jt,2);
+            numN = size(Jn,2);
+            z = zeros(numT + 2*numN, 1);
+            % Calculate the offset vector
+            tau = qdot - M\(C*qdot + N)*self.timestep;
             z(1:numN) = Jn'*tau + (normals*q - alphas)/self.timestep;
+            z(numN+1:numN+numT) = Jt'*tau;
+
+            % Calculate the problem matrix for the QP
+            P = zeros(numT+2*numN, numT+2*numN);
+            u = zeros(numN,numT);
+            
+            for n = 1:numN
+                u(n,numN*(n-1)+1:numN*n) = 1;
+            end
+            
+            Mn = M\Jn;
+            Mt = M\Jt;
+                       
+            P(1:numN, 1:numN) = normals*Mn;
+            P(1:numN, numN+1:numN+numT) = normals*Mt;
+            P(numN+1:numN+numT, 1:numN) = Jt' * Mn;
+            P(numN+1:numN+numT, numN+1:numN+numT) = Jt' * Mt;
+            P(numN+1:numN+numT, numN+numT+1:end) = u';
+            P(numN + numT+1:end,1:numN) = eye(numN) * self.friction;
+            P(numN+numT+1:end,numN+1:numN+numT) = -u;
+           
+            % Solve the LCP
+            [f,r] = self.solver(P,z);
+            % Get the normal and tangential forces
+            f = f(1:numN+numT);
+
+        end
+            [Jn, Jt] = self.contactJacobian(qhat);
+            [normals,alphas] = self.contactNormal(qhat);
+            % Pre-initialize the arrays
+            numT = size(Jt,2);
+            numN = size(Jn,2);
+            z = zeros(numT + 2*numN, 1);
+            % Calculate the offset vector
+            tau = qdot - M\(C*qdot + N)*self.timestep;
+            z(1:numN) = Jn'*tau + (normals*q - alphas)/self.timestep;function [f,r] = contactForce(self,x)
+            % Use an LCP (a type of QP) to solve for the contact forces
+            
+            % Separate the configuration and velocity
+            L = length(x);
+            q = x(1:L/2);
+            qdot = x(L/2+1:end);
+            % Simulate the configuration using constant velocity
+            qhat = q + self.timestep*qdot;
+            % Get the system properties
+            M = self.inertiaMatrix(qhat);
+            C = self.coriolisMatrix(qhat,qdot);
+            N = self.gravityMatrix(qhat);
+            [Jn, Jt] = self.contactJacobian(qhat);
+            [normals,alphas] = self.contactNormal(qhat);
+            % Pre-initialize the arrays
+            numT = size(Jt,2);
+            numN = size(Jn,2);
+            z = zeros(numT + 2*numN, 1);
+            % Calculate the offset vector
+            tau = qdot - M\(C*qdot + N)*self.timestep;
+            z(1:numN) = Jn'*tau + (normals*q - alphas)/self.timestep;
+            z(numN+1:numN+numT) = Jt'*tau;
+
+            % Calculate the problem matrix for the QP
+            P = zeros(numT+2*numN, numT+2*numN);
+            u = zeros(numN,numT);
+            
+            for n = 1:numN
+                u(n,numN*(n-1)+1:numN*n) = 1;
+            end
+            
+            Mn = M\Jn;
+            Mt = M\Jt;
+                       
+            P(1:numN, 1:numN) = normals*Mn;
+            P(1:numN, numN+1:numN+numT) = normals*Mt;
+            P(numN+1:numN+numT, 1:numN) = Jt' * Mn;
+            P(numN+1:numN+numT, numN+1:numN+numT) = Jt' * Mt;
+            P(numN+1:numN+numT, numN+numT+1:end) = u';
+            P(numN + numT+1:end,1:numN) = eye(numN) * self.friction;
+            P(numN+numT+1:end,numN+1:numN+numT) = -u;
+           
+            % Solve the LCP
+            [f,r] = self.solver(P,z);
+            % Get the normal and tangential forces
+            f = f(1:numN+numT);
+
+        end
+            z(numN+1:numN+numT) = Jt'*tau;
+
+            % Calculate the problem matrix for the QP
+            P = zeros(numT+2*numN, numT+2*numN);
+            u = zeros(numN,numT);
+            
+            for n = 1:numN
+                u(n,numN*(n-1)+1:numN*n) = 1;
+            end
+            
+            Mn = M\Jn;
+            Mt = M\Jt;
+                       
+            P(1:numN, 1:numN) = normals*Mn;
+            P(1:numN, numN+1:numN+numT) = normals*Mt;
+            P(numN+1:numN+numT, 1:numN) = Jt' * Mn;
+            P(numN+1:numN+numT, numN+1:numN+numT) = Jt' * Mt;
+            P(numN+1:numN+numT, numN+numT+1:end) = u';
+            P(numN + numT+1:end,1:numN) = eye(numN) * self.friction;
+            P(numN+numT+1:end,numN+1:numN+numT) = -u;
+           
+            % Solve the LCP
+            [f,r] = self.solver(P,z);
+            % Get the normal and tangential forces
+            f = f(1:numN+numT);
+
+        end
+            % Get the system properties
+            M = self.inertiaMatrix(qhat);
+            C = self.coriolisMatrix(qhat,qdot);
+            N = self.gravityMatrix(qhat);
+            [Jn, Jt] = self.contactJacobian(qhat);
+            [normals,alphas] = self.contactNormal(qhat);
+            % Pre-initialize the arrays
+            numT = size(Jt,2);function [f,r] = contactForce(self,x)
+            % Use an LCP (a type of QP) to solve for the contact forces
+            
+            % Separate the configuration and velocity
+            L = length(x);
+            q = x(1:L/2);
+            qdot = x(L/2+1:end);
+            % Simulate the configuration using constant velocity
+            qhat = q + self.timestep*qdot;
+            % Get the system properties
+            M = self.inertiaMatrix(qhat);
+            C = self.coriolisMatrix(qhat,qdot);
+            N = self.gravityMatrix(qhat);
+            [Jn, Jt] = self.contactJacobian(qhat);
+            [normals,alphas] = self.contactNormal(qhat);
+            % Pre-initialize the arrays
+            numT = size(Jt,2);
+            numN = size(Jn,2);
+            z = zeros(numT + 2*numN, 1);
+            % Calculate the offset vectorfunction [f,r] = contactForce(self,x)
+            % Use an LCP (a type of QP) to solve for the contact forces
+            
+            % Separate the configuration and velocity
+            L = length(x);
+            q = x(1:L/2);
+            qdot = x(L/2+1:end);
+            % Simulate the configuration using constant velocity
+            qhat = q + self.timestep*qdot;function [f,r] = contactForce(self,x)
+            % Use an LCP (a type of QP) to solve for the contact forces
+            
+            % Separate the configuration and velocity
+            L = length(x);
+            q = x(1:L/2);
+            qdot = x(L/2+1:end);
+            % Simulate the configuration using constant velocity
+            qhat = q + self.timestep*qdot;
+            % Get the system properties
+            M = self.inertiaMatrix(qhat);
+            C = self.coriolisMatrix(qhat,qdot);
+            N = self.gravityMatrix(qhat);
+            [Jn, Jt] = self.contactJacobian(qhat);
+            [normals,alphas] = self.contactNormal(qhat);
+            % Pre-initialize the arrays
+            numT = size(Jt,2);
+            numN = size(Jn,2);
+            z = zeros(numT + 2*numN, 1);
+            % Calculate the offset vector
+            tau = qdot - M\(C*qdot + N)*self.timestep;
+            z(1:numN) = Jn'*tau + (normals*q - alphas)/self.timestep;
+            z(numN+1:numN+numT) = Jt'*tau;
+
+            % Calculate the problem matrix for the QP
+            P = zeros(numT+2*numN, numT+2*numN);
+            u = zeros(numN,numT);
+            
+            for n = 1:numN
+                u(n,numN*(n-1)+1:numN*n) = 1;
+            end
+            
+            Mn = M\Jn;
+            Mt = M\Jt;
+                       
+            P(1:numN, 1:numN) = normals*Mn;
+            P(1:numN, numN+1:numN+numT) = normals*Mt;
+            P(numN+1:numN+numT, 1:numN) = Jt' * Mn;
+            P(numN+1:numN+numT, numN+1:numN+numT) = Jt' * Mt;
+            P(numN+1:numN+numT, numN+numT+1:end) = u';
+            P(numN + numT+1:end,1:numN) = eye(numN) * self.friction;
+            P(numN+numT+1:end,numN+1:numN+numT) = -u;
+           
+            % Solve the LCP
+            [f,r] = self.solver(P,z);
+            % Get the normal and tangential forces
+            f = f(1:numN+numT);
+
+        end
+            % Get the system properties
+            M = self.inertiaMatrix(qhat);
+            C = self.coriolisMatrix(qhat,qdot);
+            N = self.gravityMatrix(qhat);
+            [Jn, Jt] = self.contactJacobian(qhat);
+            [normals,alphas] = self.contactNormal(qhat);
+            % Pre-initialize the arrays
+            numT = size(Jt,2);
+            numN = size(Jn,2);
+            z = zeros(numT + 2*numN, 1);
+            % Calculate the offset vectorfunction [f,r] = contactForce(self,x)
+            % Use an LCP (a type of QP) to solve for the contact forces
+            
+            % Separate the configuration and velocity
+            L = length(x);
+            q = x(1:L/2);
+            qdot = x(L/2+1:end);
+            % Simulate the configuration using constant velocity
+            qhat = q + self.timestep*qdot;
+            % Get the system properties
+            M = self.inertiaMatrix(qhat);
+            C = self.coriolisMatrix(qhat,qdot);
+            N = self.gravityMatrix(qhat);
+            [Jn, Jt] = self.contactJacobian(qhat);
+            [normals,alphas] = self.contactNormal(qhat);
+            % Pre-initialize the arrays
+            numT = size(Jt,2);
+            numN = size(Jn,2);
+            z = zeros(numT + 2*numN, 1);
+            % Calculate the offset vector
+            tau = qdot - M\(C*qdot + N)*self.timestep;
+            z(1:numN) = Jn'*tau + (normals*q - alphas)/self.timestep;
+            z(numN+1:numN+numT) = Jt'*tau;
+
+            % Calculate the problem matrix for the QP
+            P = zeros(numT+2*numN, numT+2*numN);
+            u = zeros(numN,numT);
+            
+            for n = 1:numN
+                u(n,numN*(n-1)+1:numN*n) = 1;
+            end
+            
+            Mn = M\Jn;
+            Mt = M\Jt;
+                       
+            P(1:numN, 1:numN) = normals*Mn;
+            P(1:numN, numN+1:numN+numT) = normals*Mt;
+            P(numN+1:numN+numT, 1:numN) = Jt' * Mn;
+            P(numN+1:numN+numT, numN+1:numN+numT) = Jt' * Mt;
+            P(numN+1:numN+numT, numN+numT+1:end) = u';
+            P(numN + numT+1:end,1:numN) = eye(numN) * self.friction;
+            P(numN+numT+1:end,numN+1:numN+numT) = -u;
+           
+            % Solve the LCP
+            [f,r] = self.solver(P,z);
+            % Get the normal and tangential forces
+            f = f(1:numN+numT);
+
+        end
+            tau = qdot - M\(C*qdot + N)*self.timestep;
+            z(1:numN) = Jn'*tau + (normals*q - alphas)/self.timestep;
+            z(numN+1:numN+numT) = Jt'*tau;
+
+            % Calculate the problem matrix for the QP
+            P = zeros(numT+2*numN, numT+2*numN);
+            u = zeros(numN,numT);
+            
+            for n = 1:numN
+                u(n,numN*(n-1)+1:numN*n) = 1;
+            end
+            
+            Mn = M\Jn;
+            Mt = M\Jt;
+                       
+            P(1:numN, 1:numN) = normals*Mn;
+            P(1:numN, numN+1:numN+numT) = normals*Mt;
+            P(numN+1:numN+numT, 1:numN) = Jt' * Mn;
+            P(numN+1:numN+numT, numN+1:numN+numT) = Jt' * Mt;
+            P(numN+1:numN+numT, numN+numT+1:end) = u';
+            P(numN + numT+1:end,1:numN) = eye(numN) * self.friction;
+            P(numN+numT+1:end,numN+1:numN+numT) = -u;
+           
+            % Solve the LCP
+            [f,r] = self.solver(P,z);
+            % Get the normal and tangential forces
+            f = f(1:numN+numT);
+
+        end
+            tau = qdot - M\(C*qdot + N)*self.timestep;
+            z(1:numN) = Jn'*tau + (normals*q - alphas)/self.timestep;
+            z(numN+1:numN+numT) = Jt'*tau;
+
+            % Calculate the problem matrix for the QP
+            P = zeros(numT+2*numN, numT+2*numN);
+            u = zeros(numN,numT);
+            
+            for n = 1:numN
+                u(n,numN*(n-1)+1:numN*n) = 1;
+            end
+            
+            Mn = M\Jn;
+            Mt = M\Jt;
+                       
+            P(1:numN, 1:numN) = normals*Mn;
+            P(1:numN, numN+1:numN+numT) = normals*Mt;
+            P(numN+1:numN+numT, 1:numN) = Jt' * Mn;
+            P(numN+1:numN+numT, numN+1:numN+numT) = Jt' * Mt;
+            P(numN+1:numN+numT, numN+numT+1:end) = u';
+            P(numN + numT+1:end,1:numN) = eye(numN) * self.friction;
+            P(numN+numT+1:end,numN+1:numN+numT) = -u;
+           
+            % Solve the LCP
+            [f,r] = self.solver(P,z);
+            % Get the normal and tangential forces
+            f = f(1:numN+numT);
+
+        end
+            numN = size(Jn,2);
+            z = zeros(numT + 2*numN, 1);
+            % Calculate the offset vector
+            tau = qdot - M\(C*qdot + N)*self.timestep;
+            z(1:numN) = Jn'*tau + (normals*q - alphas)/self.timestep;
+            z(numN+1:numN+numT) = Jt'*tau;
+
+            % Calculate the problem matrix for the QP
+            P = zeros(numT+2*numN, numT+2*numN);
+            u = zeros(numN,numT);
+            
+            for n = 1:numN
+                u(n,numN*(n-1)+1:numN*n) = 1;
+            end
+            
+            Mn = M\Jn;
+            Mt = M\Jt;
+                       
+            P(1:numN, 1:numN) = normals*Mn;
+            P(1:numN, numN+1:numN+numT) = normals*Mt;
+            P(numN+1:numN+numT, 1:numN) = Jt' * Mn;
+            P(numN+1:numN+numT, numN+1:numN+numT) = Jt' * Mt;
+            P(numN+1:numN+numT, numN+numT+1:end) = u';
+            P(numN + numT+1:end,1:numN) = eye(numN) * self.friction;
+            P(numN+numT+1:end,numN+1:numN+numT) = -u;
+           
+            % Solve the LCP
+            [f,r] = self.solver(P,z);
+            % Get the normal and tangential forces
+            f = f(1:numN+numT);
+
+        end
+            % Calculate the offset vector
+            tau = qdot - M\(C*qdot + N)*self.timestep;
+            z(1:numN) = Jn'*tau + (normals*q - alphas)/self.timestep;
+            z(numN+1:numN+numT) = Jt'*tau;
+
+            % Calculate the problem matrix for the QP
+            P = zeros(numT+2*numN, numT+2*numN);
+            u = zeros(numN,numT);
+            
+            for n = 1:numN
+                u(n,numN*(n-1)+1:numN*n) = 1;
+            end
+            
+            Mn = M\Jn;
+            Mt = M\Jt;
+                       
+            P(1:numN, 1:numN) = normals*Mn;
+            P(1:numN, numN+1:numN+numT) = normals*Mt;
+            P(numN+1:numN+numT, 1:numN) = Jt' * Mn;
+            P(numN+1:numN+numT, numN+1:numN+numT) = Jt' * Mt;
+            P(numN+1:numN+numT, numN+numT+1:end) = u';
+            P(numN + numT+1:end,1:numN) = eye(numN) * self.friction;
+            P(numN+numT+1:end,numN+1:numN+numT) = -u;
+           
+            % Solve the LCP
+            [f,r] = self.solver(P,z);
+            % Get the normal and tangential forces
+            f = f(1:numN+numT);
+
+        end
             z(numN+1:numN+numT) = Jt'*tau;
 
             % Calculate the problem matrix for the QP
