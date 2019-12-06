@@ -1,4 +1,4 @@
-classdef DifferentiableLagrangian < Manipulator
+classdef DifferentiableLagrangian 
     %UNTITLED Summary of this class goes here
     %   Detailed explanation goes here
     
@@ -20,7 +20,7 @@ classdef DifferentiableLagrangian < Manipulator
     
     methods
         function obj = DifferentiableLagrangian(nQ, nU)
-            obj = obj@Manipulator(nQ, nU);
+
            obj.numQ = nQ;
            obj.numU = nU;
         end
