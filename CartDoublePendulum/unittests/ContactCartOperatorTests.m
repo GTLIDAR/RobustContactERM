@@ -1,6 +1,13 @@
 classdef ContactCartOperatorTests < matlab.unittest.TestCase
-    %UNTITLED Summary of this class goes here
-    %   Detailed explanation goes here
+    %% ContactCartOperatorTests: Unit Tests for Checking the implementation 
+    %   of the physical properties of the DifferentiableContactCart.
+    %
+    %   ContactCartOperatorTests compares the values calculated using
+    %   operator notation (DifferentiableContactCart) to those calculated
+    %   explicitly (ContactDrivenCart). 
+    %
+    %   Luke Drnach
+    %   December 6, 2019
     
     properties
         explicitModel = ContactDrivenCart();
