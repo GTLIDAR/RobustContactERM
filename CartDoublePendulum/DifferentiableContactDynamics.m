@@ -126,17 +126,22 @@ classdef DifferentiableContactDynamics
                 for n = 1:obj.numQ
                     dMinv(:,:,n) = -Minv * dM(:,:,n) * Minv;
                 end
-                % Multiply by tau_f
-                dMinv_tau_f = times(dMinv, reshape(tau + Jc*fc, 1, obj.numQ, 1));
-                dMinv_tau_f = squeeze(sum(dMinv_tau_f, 2));            
-            
-                D_tau_f = dMinv_tau_f + Minv * (dtau_q + dJc_f);
-            
-                df2_q = D_tau_f + Minv * Jc * dfc_q;
+                % Multiply by tau
+                dMinv_tau = times(dMinv, reshape(tau, 1, obj.numQ, 1));
+                dMinv_tau = squeeze(sum(dMinv_tau, 2));            
+                % Multiply by fc
+                dMinv_fc = times(dMinv, reshape(Jc*fc, 1, obj.numQ, 1));
+                dMinv_fc = squeeze(sum(dMinv_fc,2));
+                        
+                % Calculate terms common to df2_q, df2_dq
+                df2_common = dMinv_tau + (dMinv_fc + Minv*dJc_f)/obj.timestep;
                 
-                df2_dq = obj.timestep*D_tau_f + Minv * (dtau_dq + Jc * dfc_dq);
+                % Calculate the partial derivatives
+                df2_q = df2_common + Minv*dtau_q + Minv*Jc*dfc_q / obj.timestep;
                 
-                df2_u = Minv * (B + Jc * dfc_u);
+                df2_dq = obj.timestep * df2_common + Minv*(dtau_dq + Jc*dfc_dq/obj.timestep);
+                
+                df2_u = Minv * (B + Jc * dfc_u/obj.timestep);
                 
                 df_q = [obj.timestep * df2_q; df2_q];
                 df_dq = [eye(obj.numQ) + obj.timestep * df2_dq; df2_dq];
