@@ -107,12 +107,12 @@ classdef DifferentiableContactDynamics
                 dfc_u = dfc(:,2*obj.numQ+1:end);
                 
                 % Calculate the gradient wrt q
-                dBu = times(dB, reshape(u, 1, numel(u), 1));
+                dBu = times(dB, reshape(u, [1, numel(u), 1]));
                 dBu = squeeze(sum(dBu,2));
-                dC_dq = times(dC, reshape(dq, 1, obj.numQ, 1));
+                dC_dq = times(dC, reshape(dq, [1, obj.numQ, 1]));
                 dC_dq = squeeze(sum(dC_dq, 2));
                 
-                dJc_f = times(dJc, reshape(fc, 1, numel(fc), 1));
+                dJc_f = times(dJc, reshape(fc, [1, numel(fc), 1]));
                 dJc_f = squeeze(sum(dJc_f, 2));
                 
                 % Gradient of tau wrt q
@@ -127,10 +127,10 @@ classdef DifferentiableContactDynamics
                     dMinv(:,:,n) = -Minv * dM(:,:,n) * Minv;
                 end
                 % Multiply by tau
-                dMinv_tau = times(dMinv, reshape(tau, 1, obj.numQ, 1));
+                dMinv_tau = times(dMinv, reshape(tau, [1, obj.numQ, 1]));
                 dMinv_tau = squeeze(sum(dMinv_tau, 2));            
                 % Multiply by fc
-                dMinv_fc = times(dMinv, reshape(Jc*fc, 1, obj.numQ, 1));
+                dMinv_fc = times(dMinv, reshape(Jc*fc, [1, obj.numQ, 1]));
                 dMinv_fc = squeeze(sum(dMinv_fc,2));
                         
                 % Calculate terms common to df2_q, df2_dq
@@ -158,9 +158,13 @@ classdef DifferentiableContactDynamics
             % Solve the LCP
             [f,r] = obj.contactSolver.solve(P,z);
             % The gradient of the force
-            df = obj.contactSolver.gradient(f, P, z, dP, dz);
-            % Get only the normal and tangential components
-            df = df(1:numF,:);
+            if any(f(1:numF))
+                df = obj.contactSolver.gradient(f, P, z, dP, dz);
+                % Get only the normal and tangential components
+                df = df(1:numF,:);
+            else
+                df = zeros(numF, 2*obj.numQ + obj.numU);
+            end
             % Get the normal and tangential forces
             f = f(1:numF,:);
         end
@@ -190,7 +194,7 @@ classdef DifferentiableContactDynamics
             % Calculate the force effects, tau, and the no-contact velocity
             % vel:
             tau = B*u - C*dq - N;
-            vel = dq + iM * tau * obj.timestep;
+            vel = dq + obj.timestep * iM * tau;
            
             % The LCP offset vector
             z(1:numN) = Jn*vel + (Jn*q - alphas)/obj.timestep;
@@ -225,34 +229,30 @@ classdef DifferentiableContactDynamics
             % First we do some multidimensional array multiplication:
             dC = times(dC,reshape(dq, [1, obj.numQ, 1]));
             dC = squeeze(sum(dC,2));
-            dC_q = dC(:,1:obj.numQ);
-            dC_dq = dC(:,obj.numQ+1:end) + C;
             
             dBu = times(dB, reshape(u, [1, obj.numU, 1]));
             dBu = squeeze(sum(dBu, 2));
             
             % Gradients of TAU wrt q, dq
-            dtau_q = dBu - dC_q - dN;
-            dtau_dq = -dC_dq;
+            dtau_q = dBu - dC(:,1:obj.numQ) - dN;
+            dtau_dq = -(dC(:,obj.numQ+1:end) + C) + obj.timestep*dtau_q;
             
-            % Gradients of VEL wrt q, dq, and u
+            % Tensor Multiplications
             diM_tau = times(diM, reshape(tau, [1, obj.numQ, 1]));
             diM_tau = squeeze(sum(diM_tau, 2));
-            
-            dv_q = obj.timestep * (diM_tau + iM * dtau_q);
-            dv_dq = eye(obj.numQ) + obj.timestep * iM * dtau_dq;
-            dv_u = obj.timestep * iM * B;
-            
-            % Use Gradients of VEL to calculate gradients of Z:
+
             dJc_v = times(dJc, reshape(vel, [1, numel(vel), 1]));
             dJc_v = squeeze(sum(dJc_v, 2));
+            
+            % Common terms to dz_q, dz_dq
+            dz_common = dJc_v + obj.timestep * Jc * diM_tau;
+            
             % Gradient wrt q, dq
-            dz_q = dJc_v + Jc * dv_q;
-            dz_dq = Jc * dv_dq + obj.timestep * dz_q;   %Grad wrt dq
+            dz_q = dz_common + obj.timestep* Jc * iM * dtau_q;
             dz_q(1:numN,:) = dz_q(1:numN,:) + Jn ./ obj.timestep;
-                      
-            % Gradient wrt u
-            dz_u = Jc * dv_u;
+            dz_dq = obj.timestep * dz_common + Jc * (eye(obj.numQ) + obj.timestep * iM * dtau_dq);
+            dz_u = obj.timestep * Jc * iM * B;
+            
             
             % Collect all the gradients in one
             dz = zeros(numT + 2*numN, 2*obj.numQ + obj.numU);

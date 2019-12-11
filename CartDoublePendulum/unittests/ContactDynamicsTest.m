@@ -34,7 +34,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = df_est{:};
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,1), 'RelTol', testCase.tolerance,'Time Derivative Inaccurate');
+            testCase.verifyEqual(df(:,1),df_est, 'RelTol', testCase.tolerance,'Time Derivative Inaccurate');
             %% GRADIENT WRT STATE
             % Now calculate the gradient numerically
             fun = @(w) testCase.plant.dynamics(t, w, u);
@@ -42,8 +42,8 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est(:,1:numel(q)),df(:,2:numel(q)+1), 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
-            testCase.verifyEqual(df_est(:,numel(q)+1:end),df(:,2+numel(q):numel(x)+1), 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
+            testCase.verifyEqual(df(:,2:numel(q)+1),df_est(:,1:numel(q)), 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
+            testCase.verifyEqual(df(:,2+numel(q):numel(x)+1),df_est(:,numel(q)+1:end), 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
             %% GRADIENT WRT CONTROL
             % Now calculate the gradient numerically
             fun = @(w) testCase.plant.dynamics(t, x, w);
@@ -51,7 +51,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,numel(x)+2:end), 'RelTol', testCase.tolerance,'Control Derivative Inaccurate');
+            testCase.verifyEqual(df(:,numel(x)+2:end),df_est, 'RelTol', testCase.tolerance,'Control Derivative Inaccurate');
         end
         function forceGradientTest_NoContact(testCase)
             % Get the test values
@@ -69,7 +69,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,1:numel(q)), 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
+            testCase.verifyEqual(df(:,1:numel(q)),df_est, 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
             %% Velocity Derivative
             % Now calculate the gradient numerically
             fun = @(w) testCase.plant.contactForce(q, w, u);
@@ -77,14 +77,14 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,1+numel(q):2*numel(q)), 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
+            testCase.verifyEqual(df(:,1+numel(q):2*numel(q)),df_est, 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
             %% Control Derivative
             fun = @(w) testCase.plant.contactForce(q, dq, w);
             df_est = testCase.finiteDifference(fun, u);
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,2*numel(q)+1:end), 'RelTol', testCase.tolerance,'Control Derivative Inaccurate');
+            testCase.verifyEqual(df(:,2*numel(q)+1:end),df_est, 'RelTol', testCase.tolerance,'Control Derivative Inaccurate');
             
         end
         % --- TEST THE DYNAMICS GRADIENTS WITH CONTACT ---- %
@@ -104,7 +104,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,1:numel(q)), 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
+            testCase.verifyEqual(df(:,1:numel(q)),df_est, 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
             %% Velocity Derivative
             % Now calculate the gradient numerically
             fun = @(w) testCase.plant.contactForce(q, w, u);
@@ -112,14 +112,14 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,1+numel(q):2*numel(q)), 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
+            testCase.verifyEqual(df(:,1+numel(q):2*numel(q)), df_est,'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
             %% Control Derivative
             fun = @(w) testCase.plant.contactForce(q, dq, w);
             df_est = testCase.finiteDifference(fun, u);
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,2*numel(q)+1:end), 'RelTol', testCase.tolerance,'Control Derivative Inaccurate'); 
+            testCase.verifyEqual(df(:,2*numel(q)+1:end),df_est, 'RelTol', testCase.tolerance,'Control Derivative Inaccurate'); 
         end
         function dynamicsGradientTest(testCase)
             % Get the test values
@@ -141,7 +141,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = df_est{:};
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,1), 'RelTol', testCase.tolerance,'Time Derivative Inaccurate');
+            testCase.verifyEqual(df(:,1),df_est, 'RelTol', testCase.tolerance,'Time Derivative Inaccurate');
             %% GRADIENT WRT STATE
             % Now calculate the gradient numerically
             fun = @(w) testCase.plant.dynamics(t, w, u);
@@ -149,8 +149,8 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est(:,1:numel(q)),df(:,2:numel(q)+1), 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
-            testCase.verifyEqual(df_est(:,numel(q)+1:end),df(:,2+numel(q):numel(x)+1), 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
+            testCase.verifyEqual(df(:,2:numel(q)+1),df_est(:,1:numel(q)), 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
+            testCase.verifyEqual(df(:,2+numel(q):numel(x)+1),df_est(:,numel(q)+1:end), 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
             %% GRADIENT WRT CONTROL
             % Now calculate the gradient numerically
             fun = @(w) testCase.plant.dynamics(t, x, w);
@@ -158,7 +158,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,numel(x)+2:end), 'RelTol', testCase.tolerance,'Control Derivative Inaccurate');
+            testCase.verifyEqual(df(:,numel(x)+2:end),df_est, 'RelTol', testCase.tolerance,'Control Derivative Inaccurate');
         end        
         function contactJacobianNormalGradientTest(testCase)
             % Get the test values
@@ -172,7 +172,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(3,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,dfN, 'RelTol', testCase.tolerance,'Normal Contact Jacobian Gradient Inaccurate');
+            testCase.verifyEqual(dfN,df_est, 'RelTol', testCase.tolerance,'Normal Contact Jacobian Gradient Inaccurate');
             %% TANGENT COMPONENT OF THE JACOBIAN
             % Now calculate the gradient numerically
             fun2 = @(w) testCase.secondOutputWrapper(fun, w);
@@ -180,7 +180,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(3,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,dfT, 'RelTol', testCase.tolerance,'Tangent Contact Jacobian Gradient Inaccurate');
+            testCase.verifyEqual(dfT,df_est, 'RelTol', testCase.tolerance,'Tangent Contact Jacobian Gradient Inaccurate');
         end
         % --- TEST THE LCP PARAMETER GRADIENTS WITH CONTACT --- %
         function lcpMatrixGradientTest(testCase)
@@ -197,7 +197,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(3,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,:,1:numel(q)), 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
+            testCase.verifyEqual(df(:,:,1:numel(q)),df_est, 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
             %% Velocity Gradient Test
             % Now calculate the gradient numerically
             fun = @(w) testCase.plant.getLCP(q, w, u);
@@ -205,7 +205,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(3,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,:,numel(q)+1:2*numel(q)), 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
+            testCase.verifyEqual(df(:,:,numel(q)+1:2*numel(q)),df_est, 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
             %% Control Gradient Test
             % Now calculate the gradient numerically
             fun = @(w) testCase.plant.getLCP(q, dq, w);
@@ -213,7 +213,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(3,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,:,2*numel(q)+1:end), 'RelTol', testCase.tolerance,'Control Derivative Inaccurate');
+            testCase.verifyEqual(df(:,:,2*numel(q)+1:end),df_est, 'RelTol', testCase.tolerance,'Control Derivative Inaccurate');
         end
         function lcpVectorGradientTest(testCase)
             % Get the test values
@@ -230,7 +230,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,1:numel(q)), 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
+            testCase.verifyEqual(df(:,1:numel(q)),df_est, 'RelTol', testCase.tolerance,'Configuration Derivative Inaccurate');
             %% Velocity Gradient Test
             fun = @(w) testCase.plant.getLCP(q, w, u);
             fun2 = @(w) testCase.secondOutputWrapper(fun, w);
@@ -238,7 +238,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,numel(q)+1:2*numel(q)), 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
+            testCase.verifyEqual(df(:,numel(q)+1:2*numel(q)),df_est, 'RelTol', testCase.tolerance,'Velocity Derivative Inaccurate');
             %% Control Gradient Test
             % Now calculate the gradient numerically
             fun = @(w) testCase.plant.getLCP(q, dq, w);
@@ -247,7 +247,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             % Calculate the absolute value of the largest difference
             df_est = cat(2,df_est{:});
             % Check that the gradients are close
-            testCase.verifyEqual(df_est,df(:,2*numel(q)+1:end), 'RelTol', testCase.tolerance,'Control Gradient Inaccurate');
+            testCase.verifyEqual(df(:,2*numel(q)+1:end),df_est, 'RelTol', testCase.tolerance,'Control Gradient Inaccurate');
         end
     end
     methods

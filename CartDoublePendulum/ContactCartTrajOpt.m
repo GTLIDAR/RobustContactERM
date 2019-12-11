@@ -14,10 +14,10 @@ addpath(genpath('PATH_LCP'));
 
 name = 'ContactCart_LCP_TrajOpt';
 % Create the plant model
-%terrain = FlatTerrain();
-%plant = DifferentiableContactCart(terrain);
+dt = 0.01;
 plant = ContactDrivenCart();
-plant.cartHeight = 1.5;
+plant.timestep = dt;
+
 % Specify the initial and final conditions
 x0 = [0, pi/3, -2*pi/3, 0, 0, 0]';    
 xf = [10, pi/3, -2*pi/3, 0, 0, 0]'; 
@@ -27,8 +27,6 @@ N = 101;
 
 % Specify the final time of the problem
 Tf = 5;     % Five seconds for this problem
-
-plant.timestep = Tf/(N-1);
 
 % Create a Trajectory Optimization Problem 
 % Note that contact is implicit in the dynamics
@@ -74,8 +72,15 @@ save(name,'xtraj','utraj');
 % Visualize the results
 
 % Get the results
-[~,xt] = getPointsFromTrajectory(xtraj);
-%[~,ut] = getPointsFromTrajectory(utraj);
+tspan = xtraj.getBreaks();
+xt = zeros(size(x0,1),numel(tspan));
+ut = zeros(2,numel(tspan));
+
+
+for n = 1:numel(tspan)
+   xt(:,n) = xtraj.eval(tspan(n));
+   ut(:,n) = utraj.eval(tspan(n));
+end
 
 % Get the configuration vector
 q = xt(1:3,:);
@@ -83,7 +88,7 @@ figure();
 ax = gca;
 
 % Animate the simulation
-draw = @(ax,x) plant.draw(x,ax);
+draw = @(ax,x) model.draw(x,ax);
 %utilities.animator(ax,draw,x(1:3,:));
 utilities.animator(ax,draw,q,[name,'.avi']);
 
@@ -104,3 +109,4 @@ h = t;
 % Differential Terminal Cost
 dh = [1, zeros(1,size(x,1))];
 end
+
