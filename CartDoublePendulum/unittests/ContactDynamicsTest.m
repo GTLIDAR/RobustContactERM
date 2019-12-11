@@ -128,7 +128,7 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
             u = testCase.contactU;
             t = testCase.testT;
             x = [q;dq];
-            % Check that the contact force is zero
+            % Check that the contact force is not zero
             fc = testCase.plant.contactForce(q, dq,u);
             testCase.assertGreaterThanOrEqual(fc, zeros(size(fc)),'Negative LCP solution present');
             testCase.assertNotEmpty(fc(fc>0),'Contact force is zero');

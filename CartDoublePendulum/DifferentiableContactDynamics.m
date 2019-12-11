@@ -93,8 +93,8 @@ classdef DifferentiableContactDynamics
             Minv = M\eye(obj.numQ);
                         
             % Calculate the dynamics f
-            tau = B*u - C*dq - N;% + Jc*fc;
-            ddq = Minv*(tau + Jc * fc);
+            tau = B*u - C*dq - N;
+            ddq = Minv*(tau + (Jc * fc)./obj.timestep);
             
             % Time-stepping dynamics (semi-implicit, evaluated at the next time
             % step)
@@ -141,7 +141,7 @@ classdef DifferentiableContactDynamics
                 
                 df2_dq = obj.timestep * df2_common + Minv*(dtau_dq + Jc*dfc_dq/obj.timestep);
                 
-                df2_u = Minv * (B + Jc * dfc_u/obj.timestep);
+                df2_u = Minv * B + Minv * (Jc * dfc_u)./obj.timestep;
                 
                 df_q = [obj.timestep * df2_q; df2_q];
                 df_dq = [eye(obj.numQ) + obj.timestep * df2_dq; df2_dq];
