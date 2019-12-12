@@ -30,9 +30,6 @@ classdef DifferentiableContactDynamics
             u = zeros(obj.numU, 1);
             % Run the simulation loop
             for n = 1:nT-1
-                if n == 60
-                   disp("Help"); 
-                end
                dx = obj.dynamics(t(n), x(:,n), u);
                x(:,n+1) = x(:,n) + dx * obj.timestep;
             end
@@ -76,13 +73,12 @@ classdef DifferentiableContactDynamics
             dq = x(obj.numQ+1:end);
             % Solve the contact problem
             [fc, dfc, ~] = obj.contactForce(q, dq, u);
-            qhat = q + obj.timestep * dq;
             % Get the physical parameters of the system (mass matrix, etc)
-            [M, dM] = obj.massMatrix(qhat);
-            [C, dC] = obj.coriolisMatrix(qhat,dq);  %Optionally return the mass matrix, to avoid calculating it twice.
-            [N, dN] = obj.gravityMatrix(qhat);
-            [B, dB] = obj.controllerMatrix(qhat);
-            [Jn, Jt, dJn, dJt] = obj.contactJacobian(qhat);
+            [M, dM] = obj.massMatrix(q);
+            [C, dC] = obj.coriolisMatrix(q,dq);  %Optionally return the mass matrix, to avoid calculating it twice.
+            [N, dN] = obj.gravityMatrix(q);
+            [B, dB] = obj.controllerMatrix(q);
+            [Jn, Jt, dJn, dJt] = obj.contactJacobian(q);
             % Transpose the Jacobians
             Jc = [Jn; Jt]';
             dJc = permute(cat(1,dJn, dJt), [2,1,3]);
@@ -115,10 +111,10 @@ classdef DifferentiableContactDynamics
                 dJc_f = squeeze(sum(dJc_f, 2));
                 
                 % Gradient of tau wrt q
-                dtau_q = dBu - dC_dq(:,1:obj.numQ) - dN;% + dJc_f + Jc * dfc_q;                         
+                dtau_q = dBu - dC_dq(:,1:obj.numQ) - dN;                         
                 
                 % Gradient of tau wrt dq
-                dtau_dq = obj.timestep * dtau_q - (dC_dq(:,obj.numQ+1:end) + C);
+                dtau_dq = - (dC_dq(:,obj.numQ+1:end) + C);
                 
                 % Gradient of the inverse mass matrix
                 dMinv = zeros(size(dM));
@@ -132,13 +128,10 @@ classdef DifferentiableContactDynamics
                 dMinv_fc = times(dMinv, reshape(Jc*fc, [1, obj.numQ, 1]));
                 dMinv_fc = squeeze(sum(dMinv_fc,2));
                         
-                % Calculate terms common to df2_q, df2_dq
-                df2_common = dMinv_tau + (dMinv_fc + Minv*dJc_f)/obj.timestep;
-                
                 % Calculate the partial derivatives
-                df2_q = df2_common + Minv*dtau_q + Minv*Jc*dfc_q / obj.timestep;
+                df2_q = dMinv_tau + + Minv*dtau_q + (dMinv_fc + Minv*(dJc_f + Jc*dfc_q))/ obj.timestep;
                 
-                df2_dq = obj.timestep * df2_common + Minv*(dtau_dq + Jc*dfc_dq/obj.timestep);
+                df2_dq =  Minv*(dtau_dq + Jc*dfc_dq/obj.timestep);
                 
                 df2_u = Minv * B + Minv * (Jc * dfc_u)./obj.timestep;
                 
