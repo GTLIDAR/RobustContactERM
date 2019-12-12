@@ -30,6 +30,9 @@ classdef DifferentiableContactDynamics
             u = zeros(obj.numU, 1);
             % Run the simulation loop
             for n = 1:nT-1
+                if n == 60
+                   disp("Help"); 
+                end
                dx = obj.dynamics(t(n), x(:,n), u);
                x(:,n+1) = x(:,n) + dx * obj.timestep;
             end
@@ -73,10 +76,6 @@ classdef DifferentiableContactDynamics
             dq = x(obj.numQ+1:end);
             % Solve the contact problem
             [fc, dfc, ~] = obj.contactForce(q, dq, u);
-            
-            fc = fc./obj.timestep;
-            dfc = dfc./obj.timestep;
-            
             qhat = q + obj.timestep * dq;
             % Get the physical parameters of the system (mass matrix, etc)
             [M, dM] = obj.massMatrix(qhat);
@@ -205,7 +204,7 @@ classdef DifferentiableContactDynamics
             w = zeros(numN,numT);
             
             for n = 1:numN
-                w(n,numN*(n-1)+1:numN*n) = 1;
+                w(n,numT*(n-1)+1:numT*n) = 1;
             end
                         
             P(1:numN + numT, 1:numN + numT) = Jc * iM * Jc';

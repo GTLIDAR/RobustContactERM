@@ -88,7 +88,7 @@ figure();
 ax = gca;
 
 % Animate the simulation
-draw = @(ax,x) model.draw(x,ax);
+draw = @(ax,x) plant.draw(x,ax);
 %utilities.animator(ax,draw,x(1:3,:));
 utilities.animator(ax,draw,q,[name,'.avi']);
 
