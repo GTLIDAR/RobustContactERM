@@ -228,13 +228,12 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             yrange = sum(obj.lengths) + obj.cart_height;
             xlims = [x(1)-xrange,x(1)+xrange];
             ylims = [y(1)-yrange, y(1) + yrange];
-            % Create the floor -- THIS WORKS WITH ONLY FLAT TERRAIN
-            xfloor= xlims;
-            yfloor = [0,0];
-            x = [x,nan,xfloor];
-            y = [y,nan,yfloor];
             % Plot the data
             if nargout == 0
+                % Create the floor 
+                [xfloor, yfloor] = obj.terrain.draw(xlims, 100);
+                x = [x,nan,xfloor];
+                y = [y,nan,yfloor];
                 if nargin == 3
                     plot(ax,x,y,'LineWidth',2);
                 else
@@ -258,6 +257,34 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             y(2) = y(1) - obj.lengths(1) * cos(q(2));
             x(3) = x(2) + obj.lengths(2) * sin(q(2) + q(3));
             y(3) = y(2) - obj.lengths(2) * cos(q(2) + q(3));
+        end
+        function q = inverseKinematics(obj, x)
+           %% INVERSE KINEMATICS: Calculates configuration variables from cartesian positions
+           %
+           %    q = inverseKinematics(MODEL, X) calculates the
+           %    configuration variables q for the system MODEl that achieve
+           %    the desired end-effector cartesian position X. 
+           %
+           %    ARGUMENTS:
+           %        MODEL: A ContactDrivenCart object
+           %        X: 2x1 double of Cartesian end-effector positions
+           %        Q: 3x1 double of configuration coordinates
+           
+           % First, move the block to the desired X location
+           q = zeros(3,1);
+           q(1) = x(1);
+           % Now calculate the end effector position relative to the cart
+           % position
+           r = [0;x(2) - obj.cartHeight ];
+           % Calculate the second joint angle
+           % Note there are actually two solutions for the second joint
+           % angle, but acos will only return one
+           q(3) = acos((sum(r.^2) - sum(obj.lengths.^2))/(2*obj.lengths(1)*obj.lengths(2)));
+           % Calculate the first joint angle using atan2 to get a unique
+           % solution
+           beta = atan2(r(1), r(2));
+           alpha = atan2(obj.lengths(2)*sin(q(3)),  obj.lengths(1) + obj.lengths(2)*cos(q(3)));
+           q(2) = pi - (beta + alpha);
         end
     end
 end

@@ -17,10 +17,17 @@ name = 'ContactCart_LCP_TrajOpt';
 dt = 0.01;
 plant = ContactDrivenCart();
 plant.timestep = dt;
+plant.cartHeight = 1.5;
 
 % Specify the initial and final conditions
-x0 = [0, pi/3, -2*pi/3, 0, 0, 0]';    
-xf = [10, pi/3, -2*pi/3, 0, 0, 0]'; 
+x0 = [0,0];     % initial condition in cartesian coordinates
+xf = [10,0];    % final condition in cartesian coordinates
+% Calculate initial and final states
+q0 = plant.inverseKinematics(x0);
+qF = plant.inverseKinematics(xf);
+
+x0 = [q0;zeros(3,1)];
+xf = [qF; zeros(3,1)];
 
 % Specify the number of collocation points
 N = 101;
@@ -42,9 +49,10 @@ prob = prob.addStateConstraint(ConstantConstraint(xf),N);
 
 % Set the options for the solver
 prob = prob.setSolver('snopt');
-prob = prob.setSolverOptions('snopt','MajorFeasibilityTolerance',1e-5);
-prob = prob.setSolverOptions('snopt','MajorOptimalityTolerance',1e-6);
-
+prob = prob.setSolverOptions('snopt','MajorFeasibilityTolerance',1e-3);
+prob = prob.setSolverOptions('snopt','MajorOptimalityTolerance',1e-3);
+prob = prob.setSolverOptions('snopt','ScaleOption',1);
+prob = prob.setSolverOptions('snopt','IterationsLimit',20000);
 % Create the initial guess at the solution
 t_init = linspace(0, Tf, N);
 x_init = zeros(numel(x0), N);
@@ -58,7 +66,7 @@ tic;
 [xtraj, utraj, z, F, info] = prob.solveTraj(t_init, traj_init);
 toc
 
-save(name,'xtraj','utraj');
+save(name,'xtraj','utraj','z','F','info');
 
 % Notes on the output of prob.solveTraj:
 %   Return values:
@@ -84,23 +92,23 @@ end
 
 % Get the configuration vector
 q = xt(1:3,:);
-figure();
-ax = gca;
 
-% Animate the simulation
-draw = @(ax,x) plant.draw(x,ax);
 %utilities.animator(ax,draw,x(1:3,:));
-utilities.animator(ax,draw,q,[name,'.avi']);
+utilities.trajectoryAnimator(plant, q, [], [name,'.avi']);
 
 end
 
 
 function [g, dg] = cost(dt, x, u)
 % Running cost
-R  =eye(2);
-g = 1/2 * u' * R * u;
+R = eye(numel(u)); % Control weights
+Q = eye(numel(x)); % State weights
+Q(1,1) = 0;
+
+g = 1/2 * (u' * R * u + x'*Q*x);
+
 % The differential cost
-dg = [zeros(1,1+size(x,1)),u'*R];
+dg = [zeros(1),x'*Q,u'*R];
 end
 
 function [h, dh] = terminalCost(t, x)
