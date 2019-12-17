@@ -23,7 +23,8 @@ classdef PathLCPSolver < ContactSolver
                 f = f(id);
                 % Tensor multiplication
                 dP_f = times(dP, reshape(f, [1, numel(f),1]));
-                dP_f = squeeze(sum(dP_f,2));
+                dP_f = sum(dP_f,2);
+                dP_f = reshape(dP_f, size(dP_f, 1), size(dP_f, 3));
                 % Nonzero gradients
                 df(id,:) = - pinv(P) * (dP_f + dz);
             end

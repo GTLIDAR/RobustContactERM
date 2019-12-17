@@ -47,7 +47,7 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             nU = 2;
             obj = obj@Manipulator(nQ, nU);
             % We can optionally set input limits for the acrobot
-            obj = setInputLimits(obj,-10,10);
+            obj = setInputLimits(obj,-15,15);
         end 
         function [H,C,B, dH, dC, dB] = manipulatorDynamics(obj,q,dq)
             
@@ -258,6 +258,28 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             x(3) = x(2) + obj.lengths(2) * sin(q(2) + q(3));
             y(3) = y(2) - obj.lengths(2) * cos(q(2) + q(3));
         end
+        function q = iterativeIK(obj, x0, xF)
+            
+            x0 = x0(:);
+            xF = xF(:);
+            h = 0.01;                   % Step Size
+            % Get the initial configuration using normal IK
+            q0 = obj.inverseKinematics(x0);
+            % Calculate the cartesian displacement
+            dX = xF - x0;
+            q = zeros(numel(q0),round(norm(dX)/h));
+            q(:,1) = q0;
+            n = 1;
+            while norm(dX) > h
+                J = obj.jacobian(q(:,n));
+                q(:,n+1) = q(:,n) + h * pinv(J) * dX;
+                x = obj.kinematics(q(:,n+1));
+                dX = xF - x;
+                n = n+1;
+            end
+            q = q(:,1:n);
+        end
+        
         function q = inverseKinematics(obj, x)
            %% INVERSE KINEMATICS: Calculates configuration variables from cartesian positions
            %

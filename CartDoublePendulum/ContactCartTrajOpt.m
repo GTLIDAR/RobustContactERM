@@ -12,6 +12,10 @@ add_drake;
 cd(here);
 addpath(genpath('PATH_LCP'));
 
+% Load the kinematic solution
+x = load('ContactCart_KinematicSequence.mat');
+x_init = x.x;
+
 name = 'ContactCart_LCP_TrajOpt';
 % Create the plant model
 dt = 0.01;
@@ -55,10 +59,6 @@ prob = prob.setSolverOptions('snopt','ScaleOption',1);
 prob = prob.setSolverOptions('snopt','IterationsLimit',20000);
 % Create the initial guess at the solution
 t_init = linspace(0, Tf, N);
-x_init = zeros(numel(x0), N);
-for n = 1:numel(x0)
-   x_init(n,:) = linspace(x0(n),xf(n),N); 
-end
 traj_init.x = PPTrajectory(foh(t_init,x_init));
 % Solve the problem
 disp("Running Trajectory Optimization");

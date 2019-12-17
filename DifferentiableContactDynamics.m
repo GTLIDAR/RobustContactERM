@@ -6,6 +6,8 @@ classdef DifferentiableContactDynamics
         terrain;
         timestep = 0.01;
         contactSolver = PathLCPSolver();  
+        lcpCache = [];
+        cacheFlag = false;
     end
     
     methods
@@ -19,7 +21,7 @@ classdef DifferentiableContactDynamics
         end
     end
     methods (Sealed = true)
-        function [t,x] = simulate(obj, Tf, x0)
+        function [t,x] = simulate(obj, Tf, x0, u)
             
             % Pre-initialize arrays
             nX = numel(x0);
@@ -27,10 +29,12 @@ classdef DifferentiableContactDynamics
             nT = numel(t);
             x = zeros(nX, nT);
             x(:,1) = x0;
-            u = zeros(obj.numU, 1);
+            if nargin == 3
+                u = zeros(obj.numU, nT);
+            end
             % Run the simulation loop
             for n = 1:nT-1
-               dx = obj.dynamics(t(n), x(:,n), u);
+               dx = obj.dynamics(t(n), x(:,n), u(:,n));
                x(:,n+1) = x(:,n) + dx * obj.timestep;
             end
         end
@@ -73,6 +77,13 @@ classdef DifferentiableContactDynamics
             dq = x(obj.numQ+1:end);
             % Solve the contact problem
             [fc, dfc, ~] = obj.contactForce(q, dq, u);
+            % Cache the LCP Solution, if necessary
+            if obj.cacheFlag
+                f_time = obj.lcpCache.data.time;
+                [~, id] = min(abs(f_time - t));
+                obj.lcpCache.data.time(id) = t;
+                obj.lcpCache.data.force(:,id) = fc;
+            end
             % Get the physical parameters of the system (mass matrix, etc)
             [M, dM] = obj.massMatrix(q);
             [C, dC] = obj.coriolisMatrix(q,dq);  %Optionally return the mass matrix, to avoid calculating it twice.
@@ -340,6 +351,18 @@ classdef DifferentiableContactDynamics
             N = N';
             D{1} = D{1}';
             D{2} = D{2}';
+        end
+        function obj = setupLCPCache(obj, t)
+           % Set-up a cache for storing LCP results
+           
+           q = zeros(obj.numQ,1);
+           [Jn,Jt] = obj.contactJacobian(q);
+           numF = size(Jn,1) + size(Jt,1);
+           
+           f = zeros(numF, length(t));
+           
+           obj.lcpCache = SharedDataHandle(struct('time',t,'force',f));
+           obj.cacheFlag = true;
         end
     end
     

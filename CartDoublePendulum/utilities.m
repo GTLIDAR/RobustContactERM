@@ -66,7 +66,7 @@ classdef utilities
                    pause(0.1);
                end
             end
-            % Close the vidoe to save it.
+            % Close the video to save it.
             if nargin == 4
                close(w); 
             end
@@ -97,10 +97,7 @@ classdef utilities
                 close(w);
             end
         end
-        
-        
-        
-        
+      
         function diagnostics(model, t, q, f, name)
             % Calculate the distances
             d = zeros(size(f,1),size(q,2));
