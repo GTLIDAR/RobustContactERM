@@ -1,13 +1,56 @@
 classdef UncertainDistanceERM < GaussianERM
+    %% UNCERTAINDISTNACEERM: Solves the ERM problem when there is Gaussian Uncertainty on the distance to the terrain
+    %
+    %  UncertainDistanceERM implements a concrete class of GaussianERM
+    %  where the shape of the terrain is known but the distance to the
+    %  terrain is uncertain and the uncertainty is normally distributed.
+    
+    %   Luke Drnach
+    %   December 18, 2019
     
    properties
-        timestep;
-        numN;
-        numT;
+        timestep;   % Step size for the time-discretization of the contact dynamics
+        numN;       % Number of normal force components
+        numT;       % Number of tangential force components
    end
    methods
-       function obj = UncertainDistanceERM()
+       function obj = UncertainDistanceERM(plant,mu,sigma)
+           %% UncertainDistanceERM: Creates an instance of the UncertainDistanceERM class
+           %
+           %    UncertainDistanceERM is used when the shape of the terrain
+           %    and the friction coefficient are known, but the distance
+           %    to the terrain is uncertain, with the uncertainty be
+           %    modeled as a Gaussian distribution.
+           %
+           %   Arguments:
+           %       PLANT:  An instance of a subclass of the 
+           %               DifferentiableContactDynamics class
+           %       m:      Ns x 1 double, the constant means of the
+           %               Gaussian distribution describing the parameter
+           %               uncertainty.
+           %       s:      Ns x 1 double, the standard deviations of the
+           %               Gaussian distribution describing the parameter
+           %               uncertainty.
+           %               variables subject to uncertainty.
+           %   Return Values:
+           %       OBJ:     An instance of the GaussianERM class
+           %
+           %   Notes: Ns is the number of variables subject to uncertainty.
+           %   In general, the number of TRUE values in IDX and Ns should
+           %   be equal.
            
+           % Initialize the parent class
+           obj = obj@GaussianERM(mu,sigma,0);
+           % Calculate the number of normal and tangential components
+           q = zeros(plant.numQ,1);
+           [Jn,Jt] = plant.contactJacobian(q);
+           obj.numN = size(Jn,2);
+           obj.numT = size(Jt,2);
+           % Mark that the normal force component is uncertain
+           obj.uncertainIdx = false(2*obj.numN + obj.numT,1);
+           obj.uncertainIdx(1:obj.numN,:) = true;
+           % Record the timestep for use later
+           obj.timestep = plant.timestep;
        end
        function [m_mu, dmu_f, dmu_y] = ermMean(obj, f, P, w, dP, dw)
            %% ERMMEAN: The mean of the Gaussian Distribution for the ERM problem

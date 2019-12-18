@@ -1,15 +1,54 @@
 classdef UncertainFrictionERM < GaussianERM
-    %UNTITLED3 Summary of this class goes here
-    %   Detailed explanation goes here
+    %% UNCERTAINFRICTIONERM: Solves the ERM problem when there is Gaussian Uncertainty on the friction coefficient
+    %
+    %   UncertainFrictionERM is a concrete instance of GaussianERM that
+    %   implements the mean and standard deviation of the slack variables
+    %   of the LCP problem when the friction coefficient is uncertain and
+    %   the uncertainty is normally distributed.
+    
+    %   Luke Drnach
+    %   December 18, 2019
     
     properties
-        numN;
-        numT;
+        numN;   %Number of normal force components
+        numT;   %Number of tangential force components
     end
     methods
-        function obj = UncertainFrictionERM()
+        function obj = UncertainFrictionERM(plant,mu,sigma)
+            %% UncertainFrictionERM: Creates an instance of the UncertainFrictionERM class
+            %
+            %    UncertainFrictionERM is used when the shape of the terrain
+            %    and the distance to the terrain is known, but the friction
+            %    coefficient is uncertain, with the uncertainty modeled as
+            %    a Gaussian distribution.
+            %
+            %   Arguments:
+            %       PLANT:  An instance of a subclass of the
+            %               DifferentiableContactDynamics class
+            %       m:      Ns x 1 double, the constant means of the
+            %               Gaussian distribution describing the parameter
+            %               uncertainty.
+            %       s:      Ns x 1 double, the standard deviations of the
+            %               Gaussian distribution describing the parameter
+            %               uncertainty.
+            %               variables subject to uncertainty.
+            %   Return Values:
+            %       OBJ:     An instance of the GaussianERM class
+            %
+            %   Notes: Ns is the number of variables subject to uncertainty.
+            %   In general, the number of TRUE values in IDX and Ns should
+            %   be equal.
             
-            
+            % Initialize the parent class
+            obj = obj@GaussianERM(mu,sigma,0);
+            % Get the number of normal and tangential force components
+            q = zeros(plant.numQ,1);
+            [Jn,Jt] = plant.contactJacobian(q);
+            obj.numN = size(Jn,2);
+            obj.numT = size(Jt,2);
+            % Record that the friction cone is uncertain
+            obj.uncertainIdx = false(2*obj.numN + obj.numT,1);
+            obj.uncertainIdx(obj.numN+obj.numT+1:end,:) = true;
         end
         function [m_mu, dmu_f, dmu_y] = ermMean(obj, f, ~, ~, dP, ~)
             %% ERMMEAN: The mean of the Gaussian Distribution for the ERM problem

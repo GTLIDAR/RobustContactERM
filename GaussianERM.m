@@ -1,11 +1,31 @@
 classdef GaussianERM < ContactSolver
+    %% GAUSSIANERM: Implements template for the Expected Residual Minimization approach to solving SLCP with Normally distributed uncertianty
+    %
+    %   GaussianERM is an abstract class that implements common
+    %   functionality to all versions of the Expected Residual Minimization
+    %   (ERM) technique to solving Stochastic Linear Complementarity
+    %   Problems (SLCP) with Gaussian distributed problem variables.
+    %   GaussianERM solves the SLCP problem using FMINCON, and can also
+    %   return the gradient of the solution with respect to other,
+    %   domain-specific variables. 
+    %
+    %   To implement a GaussianERM, the user must provide functions for
+    %   determining the mean and variance of the Gaussian Distribution of
+    %   the LCP slack variable z. 
+    %
+    %   See also: UncertainFrictionERM, UncertainDistanceERM
+    %
+    %   Luke Drnach
+    %   December 18, 2019.
     
-   properties
-       mu;
-       sigma;
-       uncertainIdx;
-       options;
-   end
+    properties
+        mu;              %Mean of the distribution over the uncertain parameter (NOT the mean used by the final ERM formula)
+        sigma;           %Standard deviation of the distribution over the uncertain parameters
+        options;         %Options structure for FMINUNC
+    end
+    properties (SetAccess = protected)
+        uncertainIdx;    %Logical index indicating which variables are affected by the uncertainty
+    end
    methods (Abstract)
        [m_mu, dmu] = ermMean(obj, P, w, dP, dw);
        [m_sigma, dsigma] = ermDeviation(obj, P, w, dP, dw);
@@ -13,6 +33,24 @@ classdef GaussianERM < ContactSolver
    
    methods
        function obj = GaussianERM(m, s, idx)
+           %% GaussianERM: Creates an instance of the GaussianERM class
+           %
+           %   Arguments:
+           %       m:      Ns x 1 double, the constant means of the
+           %               Gaussian distribution describing the parameter
+           %               uncertainty.
+           %       s:      Ns x 1 double, the standard deviations of the
+           %               Gaussian distribution describing the parameter
+           %               uncertainty.
+           %       idx:    N x 1 logical, where true indicates the
+           %               variables subject to uncertainty.
+           %   Return Values:
+           %       OBJ:     An instance of the GaussianERM class
+           %
+           %   Notes: Ns is the number of variables subject to uncertainty.
+           %   In general, the number of TRUE values in IDX and Ns should
+           %   be equal.
+           
            obj.mu = m;
            obj.sigma = s;
            obj.uncertainIdx = idx;
@@ -20,7 +58,20 @@ classdef GaussianERM < ContactSolver
                'display','none','SpecifyObjectiveGradient',true);
        end
        function [f, r] = solve(obj, P, w)
-           
+           %% SOLVE: Calculate the solution to the ERM problem
+           %
+           %   SOLVE uses unconstrained optimization to calculate the
+           %   solution to the ERM problem.
+           %
+           %   Arguments:
+           %       OBJ:    an instance of the GaussianERM class
+           %       P:      NxN double, the LCP problem matrix
+           %       w:      Nx1 double, the LCP problem vector
+           %
+           %   Return Values:
+           %       f:      Nx1 double, the solution the SLCP-ERM problem
+           %       r:      scalar double, the residual (cost function
+           %               evaluation)
            
            % Cost function
            cost = @(x) ermCost(obj, x, P, w, dP, dw);
@@ -107,7 +158,6 @@ classdef GaussianERM < ContactSolver
            [m_mu, dmu_x] = obj.ermMean(x, P, w, dP, dw);
            [m_sigma, dsigma_x] = obj.ermDeviation(x, P, w, dP, dw);
            % Calculate the ERM residual
-           
            pdf = normpdf(x_s, m_mu, m_sigma);
            cdf = normcdf(x_s, m_mu, m_sigma);
            % Calculate the residuals for only the stochastic part
@@ -143,8 +193,35 @@ classdef GaussianERM < ContactSolver
    end
    methods (Sealed)
        function [A, b] = ermGradientCoefficients(obj, f, P, w, dP, dw)
-           
-           
+           %% ERMGRADIENTCOEFFICIENTS: Coefficients for calculating the solution gradient
+           %
+           %   ermGradientCoefficients returns coefficients A and b such 
+           %   that the solution gradient df satisfies:
+           %            A*df = b
+           %   ermGradientCoefficients only returns the coefficients 
+           %   corresponding to the stochastic or uncertain variables. The
+           %   coefficients must be combined with the coefficients from the
+           %   deterministic variables to be able to fully produce the
+           %   gradient.
+           %
+           %   Arguments:
+           %       OBJ:    an instance of the GaussianERM class
+           %       f:      Nx1 double, the current value of the LCP solution
+           %       P:      NxN double, the LCP problem matrix
+           %       w:      Nx1 double, the LCP problem vector
+           %       dP:     NxNxM double, array of derivatives of P
+           %       dw:     NxM double, array of derivatives of w
+           %
+           %   * For contact problems, M is usually the number of state
+           %   variables + the number of control variables.
+           %
+           %   Return Values:
+           %       A:       Ns x N double of multiplier coefficients for
+           %                calculating the gradient. Ns is the number of 
+           %                stochastic variables.
+           %       b:       Ns x M double of constant coefficients for
+           %                calculating the gradient. 
+    
            %% Some set-up
            % Get the solution values that correspond to the uncertainty.
            f_k = f(obj.uncertainIdx,:);
