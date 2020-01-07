@@ -44,13 +44,13 @@ classdef UncertainFrictionERM < GaussianERM
             % Get the number of normal and tangential force components
             q = zeros(plant.numQ,1);
             [Jn,Jt] = plant.contactJacobian(q);
-            obj.numN = size(Jn,2);
-            obj.numT = size(Jt,2);
+            obj.numN = size(Jn,1);
+            obj.numT = size(Jt,1);
             % Record that the friction cone is uncertain
             obj.uncertainIdx = false(2*obj.numN + obj.numT,1);
             obj.uncertainIdx(obj.numN+obj.numT+1:end,:) = true;
         end
-        function [m_mu, dmu_f, dmu_y, dmu_ff, dmu_fy] = ermMean(obj, f, ~, ~, dP, ~)
+        function [m_mu, dmu_f, dmu_y, dmu_ff, dmu_fy] = ermMean(obj, f, P, ~, dP, ~)
             %% ERMMEAN: The mean of the Gaussian Distribution for the ERM problem
             %
             %   ermMean returns the mean of the Gaussian Distribution used
@@ -90,11 +90,11 @@ classdef UncertainFrictionERM < GaussianERM
             
             % Get the number of additional variables
             numY = size(dP, 3);
-            
+            u = -P(obj.numN + obj.numT + 1:end, obj.numN + 1 : obj.numN + obj.numT);
             % Calculate the mean
-            m_mu = obj.mu .* f(1:obj.numN,:) - e * f(obj.numN+1:obj.numN+obj.numT,:);
+            m_mu = obj.mu .* f(1:obj.numN,:) - u * f(obj.numN+1:obj.numN+obj.numT,:);
             % The derivative of the mean with respect to the ERM solution f
-            dmu_f = [eye(obj.numN)*obj.mu, -e, zeros(obj.numN)];
+            dmu_f = [eye(obj.numN)*obj.mu, -u, zeros(obj.numN)];
             % The derivative with respect to any other parameters
             dmu_y = zeros(obj.numN, numY);
             % The first derivatives are constant, so the higher order

@@ -183,7 +183,8 @@ classdef GaussianERM < ContactSolver
            %
            %   Arguments:
            %       OBJ:    an instance of the GaussianERM class
-           %       f:      Nx1 double, the current value of the LCP solution
+           %       x:      Nx1 double, decision variables of the ERM
+           %               problem
            %       P:      NxN double, the LCP problem matrix
            %       w:      Nx1 double, the LCP problem vector
            %       dP:     NxNxM double, array of derivatives of P
@@ -273,6 +274,47 @@ classdef GaussianERM < ContactSolver
            dg_yx = squeeze(sum(dg_yx, 1));
        end
        function [pdf, cdf, dp_x, dc_x, dp_y, dc_y, dp_xx, dc_xx, dp_yx, dc_yx] = evalDistribution(obj, x, P, w, dP, dw)
+           %% EVALDISTRIBUTION: Evaluate the Gaussian Distribution and its Derivatives
+           %
+           %    evalDistribution evaulates the Gaussian Distribution
+           %    underlying the ERM problem and returns the value of the
+           %    PDF, the value of the CDF, and various derivatives of those
+           %    values. 
+           %
+           %    evalDistribution calculates the number of decision
+           %    variables N, the number of stochastic decision variables
+           %    Ns, and the number of additional parameters M internally
+           %    from the arguments.
+           %
+           %   Arguments:
+           %       OBJ:    an instance of the GaussianERM class
+           %       x:      Nx1 double, decision variables of the ERM
+           %               problem
+           %       P:      NxN double, the LCP problem matrix
+           %       w:      Nx1 double, the LCP problem vector
+           %       dP:     NxNxM double, array of derivatives of P
+           %       dw:     NxM double, array of derivatives of w
+           %
+           %   Return Values:
+           %        pdf:    Ns x 1 double, the normal distribution evaluated
+           %                at the stochastic decision variables
+           %        cdf:    Ns x 1 double, the cdf of the normal
+           %               distribution evaluated at the stochastic decision
+           %               variables
+           %        dp_x:   Ns x N, the derivative of pdf with respect to x
+           %        dc_x:   Ns x N, the derivative of cdf with respect to x
+           %        dp_y:   Ns x M, the derivative of pdf with respect to
+           %                the addition parameters y
+           %        dc_y:   Ns x M, the derivative of cdf with respect to
+           %                additional parameters y
+           %        dp_xx:  Ns x N x N, the second derivatives of pdf with
+           %                respect to x
+           %        dc_xx:  Ns x N x N, the second derivatives of cdf with
+           %                respect to x
+           %        dp_yx:  Ns x N x M, the mixed second derivatives of pdf
+           %                with respect to x and y
+           %        dc_yx:  Ns x N x M, the mixed second derivatives of cdf
+           %                with respect to x and y
            
            % Re-calculate the cost for the stochastic variables
            x_s = x(obj.uncertainIdx,:);

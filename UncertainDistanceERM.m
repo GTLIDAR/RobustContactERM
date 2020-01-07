@@ -44,8 +44,8 @@ classdef UncertainDistanceERM < GaussianERM
            % Calculate the number of normal and tangential components
            q = zeros(plant.numQ,1);
            [Jn,Jt] = plant.contactJacobian(q);
-           obj.numN = size(Jn,2);
-           obj.numT = size(Jt,2);
+           obj.numN = size(Jn,1);
+           obj.numT = size(Jt,1);
            % Mark that the normal force component is uncertain
            obj.uncertainIdx = false(2*obj.numN + obj.numT,1);
            obj.uncertainIdx(1:obj.numN,:) = true;
@@ -109,7 +109,7 @@ classdef UncertainDistanceERM < GaussianERM
            dmu_y = dz_y(1:obj.numN,:);
            
            % Second derivative with respect to the ERM solution, f
-           dmu_ff = zeros(obj.numN, numel(f), size(dP, 3));
+           dmu_ff = zeros(obj.numN, numel(f), numel(f));
            
            % Mixed partial derivative with respect to the solution f and
            % the parameters y
