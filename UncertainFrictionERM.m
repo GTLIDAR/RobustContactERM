@@ -50,7 +50,7 @@ classdef UncertainFrictionERM < GaussianERM
             obj.uncertainIdx = false(2*obj.numN + obj.numT,1);
             obj.uncertainIdx(obj.numN+obj.numT+1:end,:) = true;
         end
-        function [m_mu, dmu_f, dmu_y] = ermMean(obj, f, ~, ~, dP, ~)
+        function [m_mu, dmu_f, dmu_y, dmu_ff, dmu_fy] = ermMean(obj, f, ~, ~, dP, ~)
             %% ERMMEAN: The mean of the Gaussian Distribution for the ERM problem
             %
             %   ermMean returns the mean of the Gaussian Distribution used
@@ -82,6 +82,11 @@ classdef UncertainFrictionERM < GaussianERM
             %       dmu_y:  numNxM double, the partial derivative of m_mu 
             %               with respect to any other variables (usually
             %               state and controls of a dynamical system)
+            %       dmu_ff: numNxNxN double, the second partial derivative
+            %               of m_mu with respect to the LCP  solution f
+            %       dmu_fy: numNxNxM double, the mixed partial derivatives
+            %               of m_mu with respect to the LCP solution f and
+            %               and the parameters y
             
             % Get the number of additional variables
             numY = size(dP, 3);
@@ -92,8 +97,12 @@ classdef UncertainFrictionERM < GaussianERM
             dmu_f = [eye(obj.numN)*obj.mu, -e, zeros(obj.numN)];
             % The derivative with respect to any other parameters
             dmu_y = zeros(obj.numN, numY);
+            % The first derivatives are constant, so the higher order
+            % derivatives are zero
+            dmu_ff = zeros(obj.numN, length(f), length(f));
+            dmu_fy = zeros(obj.numN, length(f), numY);
         end
-        function [m_sigma, dsigma_f, dsigma_y]  = ermDeviation(obj, f, ~, ~, dP, ~)
+        function [m_sigma, dsigma_f, dsigma_y, dsigma_ff, dsigma_fy]  = ermDeviation(obj, f, ~, ~, dP, ~)
             %% ERMDeviation: The standard deviation of the Gaussian Distribution for the ERM problem
             %
             %   ermDeviation returns the standard deviation of the Gaussian 
@@ -125,7 +134,13 @@ classdef UncertainFrictionERM < GaussianERM
             %       dsigma_y:  numNxM double, the partial derivative of m_sigma 
             %               with respect to any other variables (usually
             %               state and controls of a dynamical system)
-                        
+            %       dsigma_ff: numNxNxN double, the second partial
+            %               derivative of m_sigma with respect to the LCP
+            %               solution f
+            %       dsigma_fy: numNxNxM double, the mixed partial derivative
+            %               of m_sigma with respect to the LCP solution f
+            %               and the parameters y.
+            
             % Get the number of additional variables
             numY = size(dP, 3);
             
@@ -139,6 +154,10 @@ classdef UncertainFrictionERM < GaussianERM
             % The derivative of the variance with respect to any other
             % parameters
             dsigma_y  = zeros(obj.numN, numY);
+            % The first derivatives are constants, so all the higher order
+            % derivatives are zero
+            dsigma_ff = zeros(obj.numN, length(f), length(f));
+            dsigma_fy = zeros(obj.numN, length(f), numY);
         end
     end
 end
