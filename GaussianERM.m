@@ -54,10 +54,9 @@ classdef GaussianERM < ContactSolver
            obj.mu = m;
            obj.sigma = s;
            obj.uncertainIdx = idx;
-           obj.options = optimoptions('fminunc','Algorithm','trust-region',...
-               'display','none','SpecifyObjectiveGradient',true);
+           obj.options = optimoptions('fmincon','display','none','SpecifyObjectiveGradient',true);
        end
-       function [f, r] = solve(obj, P, w)
+       function [f, r] = solve(obj, P, w, dP, dw)
            %% SOLVE: Calculate the solution to the ERM problem
            %
            %   SOLVE uses unconstrained optimization to calculate the
@@ -78,9 +77,9 @@ classdef GaussianERM < ContactSolver
            % Initial guess
            f0 = zeros(size(w));
            % Solve the problem
-           [f, r, exitflag] = fminunc(cost, f0, obj.options);
+           [f, r, exitflag] = fmincon(cost, f0, -P, w, [], [], zeros(size(f0)), [], [], obj.options);
            if exitflag<=0
-              warning('FMINUNC might have terminated before a solution was found'); 
+              warning('FMINCON might have terminated before a solution was found'); 
            end
        end
        function df = gradient(obj, f, P, w, dP, dw)
@@ -164,9 +163,9 @@ classdef GaussianERM < ContactSolver
                dx_x = zeros(sum(obj.uncertainIdx), length(x));
                dx_x(:,obj.uncertainIdx) = 1;
                % Gradient
-               ds = 2*x_k - (2 * m_sigma.* ((x_k + m_mu) .* dsigma_x) + m_sigma.^2.*dx_x).*pdf -...
-                   m_sigma.^2.*(x_k + m_mu).*dp_x + (2*m_sigma .* dsigma_x + 2*m_mu .* dmu_x - 2*x_k).*cdf +...
-                   (m_sigma.^2 + m_mu.^2 - x_k.^2).*dc_x;
+               ds = 2*x_s - (2 * m_sigma.* ((x_s + m_mu) .* dsigma_x) + m_sigma.^2.*dx_x).*pdf -...
+                   m_sigma.^2.*(x_s + m_mu).*dp_x + (2*m_sigma .* dsigma_x + 2*m_mu .* dmu_x - 2*x_s).*cdf +...
+                   (m_sigma.^2 + m_mu.^2 - x_s.^2).*dc_x;
                % Sum the parts to get the overall gradient
                dr = dr_1 + dr_2 + sum(ds, 1);
            end
@@ -246,7 +245,7 @@ classdef GaussianERM < ContactSolver
            % Calculate the terms that multiply each of the distribution
            % values for the hessian
            pdf_mult_x = 2*(dsigma_x.*dsigma_xk + m_sigma.*dsigma_xx).*(x_s + m_mu) + 2 .* m_sigma.*dsigma_x.*(del_nk + dmu_xk) + ...
-               2.*m_sigma.*dsigma_xk .*(del_nj + dmu_xj) + m_sigma.^2.*dmu_xx;
+               2.*m_sigma.*dsigma_xk .*(del_nj + dmu_x) + m_sigma.^2.*dmu_xx;
            dp_x_mult_x = 2.*m_sigma.*dsigma_xk.*(x_s+m_mu) + m_sigma.^2.*(del_nk + dmu_xk);
            cdf_mult_x = 2.*(dsigma_xk.*dsigma_x + m_sigma.*dsigma_xx + dmu_xk.*dmu_x + m_mu.*dmu_xx - del_nk.*del_nj);
            dc_x_mult_x = 2.*(m_sigma.*dsigma_xk + m_mu.*dmu_xk - x_s.*del_nk);
@@ -324,8 +323,8 @@ classdef GaussianERM < ContactSolver
            % Normalize the decision variable
            tau = (x_s - m_mu)./m_sigma;
            % Calculate the PDF and CDF values
-           pdf = normpdf(tau);
-           cdf = normcdf(tau);
+           pdf = normpdf(x_s, m_mu, m_sigma);
+           cdf = normcdf(x_s, m_mu, m_sigma);
            
            if nargout > 2
                % Calculate the first derivatives
@@ -360,7 +359,7 @@ classdef GaussianERM < ContactSolver
                    
                    % The second derivatives of pdf and cdf
                    dp_xx = -dp_x2 .* dp_const - pdf .* (dsigma_x .* dsigma_x2 ./ m_sigma.^2 + dsigma_xx./m_sigma + dtau_xx);
-                   dp_yx = -dp_y2 .* dp_const - pdf .* (dsigma_x .* dsigma_y ./ m_sigma.^2 + dsigma_yx + dtau_yx);
+                   dp_yx = -dp_y2 .* dp_const - pdf .* (dsigma_x .* dsigma_y ./ m_sigma.^2 + dsigma_xy + dtau_yx);
                    
                    dc_xx = dsigma_x2 .* pdf .* dtau_x + m_sigma .* (dp_x2 .* dtau_x + pdf .* dtau_xx);
                    dc_yx = dsigma_x .* pdf .* dtau_y + m_sigma .* (dp_y2 .* dtau_x + pdf .* dtau_yx);
