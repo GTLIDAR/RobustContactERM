@@ -18,6 +18,11 @@ classdef GaussianERM < ContactSolver
     %   Luke Drnach
     %   December 18, 2019.
     
+    % TODO: Check gradient implementation 
+    %       Modify calculations for when sigma = 0 (i.e. uncertain
+    %       friction, but no contact)
+    
+    
     properties
         mu;              %Mean of the distribution over the uncertain parameter (NOT the mean used by the final ERM formula)
         sigma;           %Standard deviation of the distribution over the uncertain parameters
@@ -27,8 +32,8 @@ classdef GaussianERM < ContactSolver
         uncertainIdx;    %Logical index indicating which variables are affected by the uncertainty
     end
    methods (Abstract)
-       [m_mu, dmu_f, dmu_y, dmu_ff, dmu_yf] = ermMean(obj, f, P, w, dP, dw);
-       [m_sigma, dsigma_f, dsigma_y, dsigma_ff, dsigma_fy] = ermDeviation(obj, P, w, dP, dw);
+       [m_mu, dmu_x, dmu_y, dmu_xx, dmu_xy] = ermMean(obj, x, P, w, varargin);
+       [m_sigma, dsigma_x, dsigma_y, dsigma_xx, dsigma_xy] = ermDeviation(obj, x, P, w, varargin);
    end
    
    methods
@@ -56,7 +61,7 @@ classdef GaussianERM < ContactSolver
            obj.uncertainIdx = idx;
            obj.options = optimoptions('fmincon','display','none','SpecifyObjectiveGradient',true);
        end
-       function [f, r] = solve(obj, P, w, dP, dw)
+       function [f, r] = solve(obj, P, w)
            %% SOLVE: Calculate the solution to the ERM problem
            %
            %   SOLVE uses unconstrained optimization to calculate the
@@ -73,7 +78,7 @@ classdef GaussianERM < ContactSolver
            %               evaluation)
            
            % Cost function
-           cost = @(x) ermCost(obj, x, P, w, dP, dw);
+           cost = @(x) ermCost(obj, x, P, w);
            % Initial guess
            f0 = zeros(size(w));
            % Solve the problem
@@ -112,7 +117,7 @@ classdef GaussianERM < ContactSolver
            % NOTE: Check if we need to zero out the components of the
            % gradient corresponding to the zero solution.
        end
-       function [r, dr] = ermCost(obj, x, P, w, dP, dw)
+       function [r, dr] = ermCost(obj, x, P, w)
            %% ERMCOST: Objective function for the ERM approach
            %
            %   ERMCOST returns the sum of the expected residuals for the
@@ -124,8 +129,6 @@ classdef GaussianERM < ContactSolver
            %       x:      Nx1 double, the current guess of the LCP solution
            %       P:      NxN double, the LCP problem matrix
            %       w:      Nx1 double, the LCP problem vector
-           %       dP:     NxNxM double, array of derivatives of P
-           %       dw:     NxM double, array of derivatives of w
            %
            %   * For contact problems, M is usually the number of state
            %   variables + the number of control variables.
@@ -141,33 +144,40 @@ classdef GaussianERM < ContactSolver
            % Re-calculate the cost for the stochastic variables
            x_s = x(obj.uncertainIdx,:);
            % Get the mean and standard deviation for each problem
-           [m_mu, dmu_x] = obj.ermMean(x, P, w, dP, dw);
-           [m_sigma, dsigma_x] = obj.ermDeviation(x, P, w, dP, dw);
+           [m_mu, dmu_x] = obj.ermMean(x, P, w);
+           [m_sigma, dsigma_x] = obj.ermDeviation(x, P, w);
            % Calculate the ERM residual
-           [pdf, cdf, dp_x, dc_x] = obj.evalDistribution(x,P,w,dP,dw);
+           [pdf, cdf, dp_x, dc_x] = obj.evalDistribution(x, P, w);
            % Calculate the residuals for only the stochastic part
            r(obj.uncertainIdx,:) = x_s.^2 - m_sigma.^2 .* (x_s + m_mu).*pdf + ...
                (m_sigma.^2 + m_mu.^2 - x_s^2).*cdf;
            % Sum all the residuals together
            r = sum(r);
-           
+
            %% Calculate the gradient
            if nargout == 2
-               % Gradient for the deterministic variables
-               dr_1 = 2 * x';
-               dr_1(x > z) = 0;
-               dr_2 = 2 * (z.*P); 
-               dr_2 = sum(dr_2,1);
-               dr_2(x < z) = 0;
-               % Gradient for the stochastic variables
-               dx_x = zeros(sum(obj.uncertainIdx), length(x));
-               dx_x(:,obj.uncertainIdx) = 1;
-               % Gradient
-               ds = 2*x_s - (2 * m_sigma.* ((x_s + m_mu) .* dsigma_x) + m_sigma.^2.*dx_x).*pdf -...
-                   m_sigma.^2.*(x_s + m_mu).*dp_x + (2*m_sigma .* dsigma_x + 2*m_mu .* dmu_x - 2*x_s).*cdf +...
-                   (m_sigma.^2 + m_mu.^2 - x_s.^2).*dc_x;
-               % Sum the parts to get the overall gradient
-               dr = dr_1 + dr_2 + sum(ds, 1);
+               nX = numel(x);
+               % First derivative for deterministic variables
+               dr = 2 * z .* P;
+               Dx = diag(x);
+               dr(x < z,:) = 2.*Dx(x < z,:);
+               % First derivative for stochastic variables
+               % Get the stochastic variables
+               % Get the uncertain variables
+               x_s = x(obj.uncertainIdx,:);
+               del_nj = zeros(length(x_s),nX);
+               del_nj(:,obj.uncertainIdx) = eye(sum(obj.uncertainIdx));
+               % Calculate the terms multiplying the distribution values
+               pdf_common = 2.*m_sigma.*dsigma_x .* (x_s + m_mu) + m_sigma.^2 .*(del_nj + dmu_x);
+               dp_x_common = m_sigma.^2 .*(x_s + m_mu);
+               cdf_common = 2*(m_sigma.*dsigma_x + m_mu.*dmu_x - x_s.*del_nj);
+               dc_x_common = m_sigma.^2 + m_mu.^2 - x_s.^2;
+               % The derivative of the stochastic cost
+               df_x = 2.*Dx(obj.uncertainIdx,:) - pdf_common .* pdf - dp_x_common .* dp_x + ...
+                   cdf_common .* cdf + dc_x_common .* dc_x;
+               % Combine the two costs
+               dr(obj.uncertainIdx,:) = df_x;
+               dr = sum(dr, 1);
            end
        end
    end
@@ -202,9 +212,9 @@ classdef GaussianERM < ContactSolver
            
            [nX,~,nY] = size(dP);
            
-           %% Derivatives for determinsitic variables
            % Calculate the slack variables
-           z = P*x + w;
+           z = P*x + w;           
+           %% Higher Derivatives for determinsitic variables
            % Terms where z < x
            P2 = reshape(P,[nX,1,nX]);   % Broadcast P to make multiplication easier
            dg_xx = 2 * P .* P2;
@@ -218,12 +228,12 @@ classdef GaussianERM < ContactSolver
            dg_xx(x_idx,:,:) = 2*delta_3(x_idx,:,:);
            dg_yx(x_idx,:,:) = 0;
            
-           %% Derivatives for stochastic variables
+           %% Higher Derivatives for stochastic variables
            % Get the uncertain variables
            x_s = x(obj.uncertainIdx,:);
            del_nj = zeros(length(x_s),nX);
            del_nj(:,obj.uncertainIdx) = eye(sum(obj.uncertainIdx));
-           % Derivatives of the distribution values
+           % Calculate the distribution values
            [pdf, cdf, dp_x, dc_x, dp_y, dc_y, dp_xx, dc_xx, dp_yx, dc_yx] = obj.evalDistribution(x, P, w, dP, dw);
            [m_sigma, dsigma_x, dsigma_y, dsigma_xx, dsigma_yx]  = obj.ermDeviation(x, P, w, dP, dw);
            [m_mu, dmu_x, dmu_y, dmu_xx, dmu_yx] = obj.ermMean(x, P, w, dP, dw);
@@ -264,6 +274,7 @@ classdef GaussianERM < ContactSolver
            df_yx = -pdf_mult_y .* pdf - pdf_common .* dp_y - dp_x_mult_y .* dp_x - ...
                dp_x_common .* dp_yx + cdf_mult_y .* cdf + dc_x_common .* dc_y + dc_x_mult_y .* dc_x + ...
                dc_x_common .* dc_yx;
+           
            %% Combine the derivatives of the deterministic and stochastic variables
            % Combine all the partial derivatives together to get the
            % derivatives of the cost
@@ -272,7 +283,7 @@ classdef GaussianERM < ContactSolver
            dg_xx = squeeze(sum(dg_xx, 1));
            dg_yx = squeeze(sum(dg_yx, 1));
        end
-       function [pdf, cdf, dp_x, dc_x, dp_y, dc_y, dp_xx, dc_xx, dp_yx, dc_yx] = evalDistribution(obj, x, P, w, dP, dw)
+       function [pdf, cdf, dp_x, dc_x, dp_y, dc_y, dp_xx, dc_xx, dp_xy, dc_yx] = evalDistribution(obj, x, P, w, dP, dw)
            %% EVALDISTRIBUTION: Evaluate the Gaussian Distribution and its Derivatives
            %
            %    evalDistribution evaulates the Gaussian Distribution
@@ -315,11 +326,18 @@ classdef GaussianERM < ContactSolver
            %        dc_yx:  Ns x N x M, the mixed second derivatives of cdf
            %                with respect to x and y
            
+           % Get the mean and standard deviation for each problem
+           if nargout > 4
+               [m_mu, dmu_x, dmu_y, dmu_xx, dmu_xy] = obj.ermMean(x, P, w, dP, dw);
+               [m_sigma, dsigma_x, dsigma_y, dsigma_xx, dsigma_xy] = obj.ermDeviation(x, P, w, dP, dw);
+           else
+               [m_mu, dmu_x] = obj.ermMean(x, P, w);
+               [m_sigma, dsigma_x] = obj.ermDeviation(x, P, w);
+           end
+           
            % Re-calculate the cost for the stochastic variables
            x_s = x(obj.uncertainIdx,:);
-           % Get the mean and standard deviation for each problem
-           [m_mu, dmu_x, dmu_y, dmu_xx, dmu_xy] = obj.ermMean(x, P, w, dP, dw);
-           [m_sigma, dsigma_x, dsigma_y, dsigma_xx, dsigma_xy] = obj.ermDeviation(x, P, w, dP, dw);
+
            % Normalize the decision variable
            tau = (x_s - m_mu)./m_sigma;
            % Calculate the PDF and CDF values
@@ -330,38 +348,39 @@ classdef GaussianERM < ContactSolver
                % Calculate the first derivatives
                tau_const = tau.*dsigma_x + dmu_x;   %A common term in the derivatives of TAU
                tau_const(:,obj.uncertainIdx) = tau_const(:,obj.uncertainIdx) - eye(sum(obj.uncertainIdx));
-                % The derivative of TAU wrt x
+               % The derivative of TAU wrt x
                dtau_x = - tau_const ./ m_sigma;
-
+               
                % The derivatives of the pdf and cdf values wrt x
-               dp_const = dsigma_x ./m_sigma + dtau_x;  % Term common in derivatives of pdf
+               dp_const = dsigma_x ./m_sigma + tau.*dtau_x;  % Term common in derivatives of pdf
                dp_x = - pdf .* dp_const;
                dc_x = m_sigma .* pdf .* dtau_x;
                
                if nargout > 4
                    % Calculate the derivatives wrt the parameters y
                    dtau_y = (tau .* dsigma_y + dmu_y)./m_sigma;
-                   dp_y = -pdf .* (dsigma_y ./ m_sigma + dtau_y);
+                   dp_y = -pdf .* (dsigma_y ./ m_sigma + tau.*dtau_y);
                    dc_y = m_sigma .* pdf .* dtau_y;
                    
                    % Calculate the second derivatives
                    % Broadcast some of the variables so the array sizes are
                    % consistent after multiplication
                    dsigma_y = reshape(dsigma_y, [size(dsigma_y, 1), 1, size(dsigma_y, 2)]);
-                   dsigma_x2 = reshape(dsigma_x, [size(dsigma_x, 1), 1, size(dsigma_x, 2)]);
+                   dsigma_xk = reshape(dsigma_x, [size(dsigma_x, 1), 1, size(dsigma_x, 2)]);
+                   dtau_xk = reshape(dtau_x, [size(dtau_x, 1), 1, size(dtau_x, 2)]);
                    dtau_y = reshape(dtau_y, [size(dtau_y, 1), 1, size(dtau_y, 2)]);
                    dp_x2 = reshape(dp_x, [size(dp_x,1), 1, size(dp_x,2)]);
                    dp_y2 = reshape(dp_y, [size(dp_y,1), 1, size(dp_y,2)]);
                    
-                   % the second derivatives of TAU 
-                   dtau_xx = tau_const .* dsigma_x2 ./ (m_sigma.^2) - (dtau_x .* dsigma_x2 + tau.*dsigma_xx + dmu_xx)./m_sigma;
+                   % the second derivatives of TAU
+                   dtau_xx = tau_const .* dsigma_xk ./ (m_sigma.^2) - (dtau_x .* dsigma_xk + tau.*dsigma_xx + dmu_xx)./m_sigma;
                    dtau_yx = tau_const .* dsigma_y ./ (m_sigma.^2) - (dtau_y .* dsigma_x + tau.*dsigma_xy + dmu_xy)./m_sigma;
                    
                    % The second derivatives of pdf and cdf
-                   dp_xx = -dp_x2 .* dp_const - pdf .* (dsigma_x .* dsigma_x2 ./ m_sigma.^2 + dsigma_xx./m_sigma + dtau_xx);
-                   dp_yx = -dp_y2 .* dp_const - pdf .* (dsigma_x .* dsigma_y ./ m_sigma.^2 + dsigma_xy + dtau_yx);
+                   dp_xx = -dp_x2 .* dp_const - pdf .* (-dsigma_x .* dsigma_xk ./ m_sigma.^2 + dsigma_xx./m_sigma + dtau_x .* dtau_xk + tau.*dtau_xx);
+                   dp_xy = -dp_y2 .* dp_const - pdf .* (-dsigma_x .* dsigma_y ./ m_sigma.^2 + dsigma_xy ./m_sigma + dtau_x .* dtau_y + tau.*dtau_yx);
                    
-                   dc_xx = dsigma_x2 .* pdf .* dtau_x + m_sigma .* (dp_x2 .* dtau_x + pdf .* dtau_xx);
+                   dc_xx = dsigma_xk .* pdf .* dtau_x + m_sigma .* (dp_x2 .* dtau_x + pdf .* dtau_xx);
                    dc_yx = dsigma_x .* pdf .* dtau_y + m_sigma .* (dp_y2 .* dtau_x + pdf .* dtau_yx);
                end
            end

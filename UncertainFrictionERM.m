@@ -50,7 +50,7 @@ classdef UncertainFrictionERM < GaussianERM
             obj.uncertainIdx = false(2*obj.numN + obj.numT,1);
             obj.uncertainIdx(obj.numN+obj.numT+1:end,:) = true;
         end
-        function [m_mu, dmu_f, dmu_y, dmu_ff, dmu_fy] = ermMean(obj, f, P, ~, dP, ~)
+        function [m_mu, dmu_x, dmu_y, dmu_xx, dmu_xy] = ermMean(obj, x, P, ~, varargin)
             %% ERMMEAN: The mean of the Gaussian Distribution for the ERM problem
             %
             %   ermMean returns the mean of the Gaussian Distribution used
@@ -58,12 +58,12 @@ classdef UncertainFrictionERM < GaussianERM
             %
             %   Arguments:
             %       OBJ:    an UncertainFrictionERM object
-            %       f:      Nx1 double, the solution vector to the ERM
+            %       x:      Nx1 double, the solution vector to the ERM
             %               problem
             %       P:      NxN double, the matrix in the LCP problem 
-            %               f'Pf + f'w = 0 
+            %               x'(Px + w) = 0 
             %       w:      Nx1 double, the vector in the LCP problem
-            %               f'Pf+f'w = 0
+            %               x'(Px + w) = 0
             %       dP:     NxNxM double, an array of derivatives of P with
             %               respect to other variables (usually the state 
             %               and controls of a dynamical system) 
@@ -73,36 +73,38 @@ classdef UncertainFrictionERM < GaussianERM
             %   Return Values:
             %       m_mu:   numNx1 double, the mean of the Gaussian
             %               Distribution for the ERM problem. m_mu is the
-            %               mean of the component of Pf+w that encodes the
+            %               mean of the component of Px+w that encodes the
             %               friction cone constraint. numN is the number of
             %               normal friction components (the number of
             %               contact points).
-            %       dmu_f:  numNxN double, the partial derivative of m_mu 
-            %               with respect to the LCP solution, f
+            %       dmu_x:  numNxN double, the partial derivative of m_mu 
+            %               with respect to the LCP solution, x
             %       dmu_y:  numNxM double, the partial derivative of m_mu 
             %               with respect to any other variables (usually
             %               state and controls of a dynamical system)
-            %       dmu_ff: numNxNxN double, the second partial derivative
-            %               of m_mu with respect to the LCP  solution f
-            %       dmu_fy: numNxNxM double, the mixed partial derivatives
-            %               of m_mu with respect to the LCP solution f and
+            %       dmu_xx: numNxNxN double, the second partial derivative
+            %               of m_mu with respect to the LCP  solution x
+            %       dmu_xy: numNxNxM double, the mixed partial derivatives
+            %               of m_mu with respect to the LCP solution x and
             %               and the parameters y
-            
-            % Get the number of additional variables
-            numY = size(dP, 3);
+
             u = -P(obj.numN + obj.numT + 1:end, obj.numN + 1 : obj.numN + obj.numT);
             % Calculate the mean
-            m_mu = obj.mu .* f(1:obj.numN,:) - u * f(obj.numN+1:obj.numN+obj.numT,:);
+            m_mu = obj.mu .* x(1:obj.numN,:) - u * x(obj.numN+1:obj.numN+obj.numT,:);
             % The derivative of the mean with respect to the ERM solution f
-            dmu_f = [eye(obj.numN)*obj.mu, -u, zeros(obj.numN)];
-            % The derivative with respect to any other parameters
-            dmu_y = zeros(obj.numN, numY);
-            % The first derivatives are constant, so the higher order
-            % derivatives are zero
-            dmu_ff = zeros(obj.numN, length(f), length(f));
-            dmu_fy = zeros(obj.numN, length(f), numY);
+            dmu_x = [eye(obj.numN)*obj.mu, -u, zeros(obj.numN)];
+            if nargout > 2
+                dP = varargin{1};
+                numY = size(dP,3);
+                % The derivative with respect to any other parameters
+                dmu_y = zeros(obj.numN, numY);
+                % The first derivatives are constant, so the higher order
+                % derivatives are zero
+                dmu_xx = zeros(obj.numN, length(x), length(x));
+                dmu_xy = zeros(obj.numN, length(x), numY);
+            end
         end
-        function [m_sigma, dsigma_f, dsigma_y, dsigma_ff, dsigma_fy]  = ermDeviation(obj, f, ~, ~, dP, ~)
+        function [m_sigma, dsigma_x, dsigma_y, dsigma_xx, dsigma_xy]  = ermDeviation(obj, x, ~, ~, varargin)
             %% ERMDeviation: The standard deviation of the Gaussian Distribution for the ERM problem
             %
             %   ermDeviation returns the standard deviation of the Gaussian 
@@ -110,12 +112,12 @@ classdef UncertainFrictionERM < GaussianERM
             %
             %   Arguments:
             %       OBJ:    an UncertainFrictionERM object
-            %       f:      Nx1 double, the solution vector to the ERM
+            %       x:      Nx1 double, the solution vector to the ERM
             %               problem
             %       P:      NxN double, the matrix in the LCP problem 
-            %               f'Pf + f'w = 0 
+            %               x'(Px + w) = 0 
             %       w:      Nx1 double, the vector in the LCP problem
-            %               f'Pf+f'w = 0
+            %               x'(Px + w) = 0
             %       dP:     NxNxM double, an array of derivatives of P with
             %               respect to other variables (usually the state 
             %               and controls of a dynamical system) 
@@ -129,35 +131,35 @@ classdef UncertainFrictionERM < GaussianERM
             %               friction cone constraint. numN is the number of
             %               normal friction components (the number of
             %               contact points).
-            %       dsigma_f:  numNxN double, the partial derivative of m_sigma 
-            %               with respect to the LCP solution, f
+            %       dsigma_x:  numNxN double, the partial derivative of m_sigma 
+            %               with respect to the LCP solution, x
             %       dsigma_y:  numNxM double, the partial derivative of m_sigma 
             %               with respect to any other variables (usually
             %               state and controls of a dynamical system)
-            %       dsigma_ff: numNxNxN double, the second partial
+            %       dsigma_xx: numNxNxN double, the second partial
             %               derivative of m_sigma with respect to the LCP
-            %               solution f
-            %       dsigma_fy: numNxNxM double, the mixed partial derivative
-            %               of m_sigma with respect to the LCP solution f
+            %               solution x
+            %       dsigma_xy: numNxNxM double, the mixed partial derivative
+            %               of m_sigma with respect to the LCP solution x
             %               and the parameters y.
-            
-            % Get the number of additional variables
-            numY = size(dP, 3);
-            
+            numX = numel(x);
             % Calculate the variance
-            m_sigma = obj.sigma .* f(1:obj.numN,:);
-            
+            m_sigma = obj.sigma .* x(1:obj.numN,:);
             % The derivative of the variance with respect to the ERM
             % solution
-            dsigma_f = zeros(obj.numN, length(f));
-            dsigma_f(1:obj.numN, 1:obj.numN) = obj.sigma * eye(obj.numN); 
-            % The derivative of the variance with respect to any other
-            % parameters
-            dsigma_y  = zeros(obj.numN, numY);
-            % The first derivatives are constants, so all the higher order
-            % derivatives are zero
-            dsigma_ff = zeros(obj.numN, length(f), length(f));
-            dsigma_fy = zeros(obj.numN, length(f), numY);
+            dsigma_x = zeros(obj.numN, numX);
+            dsigma_x(1:obj.numN, 1:obj.numN) = obj.sigma * eye(obj.numN); 
+            if nargout > 2
+                dP = varargin{1};
+                numY = size(dP,3);
+                % The derivative of the variance with respect to any other
+                % parameters
+                dsigma_y  = zeros(obj.numN, numY);
+                % The first derivatives are constants, so all the higher order
+                % derivatives are zero
+                dsigma_xx = zeros(obj.numN, numX, numX);
+                dsigma_xy = zeros(obj.numN, numX, numY);
+            end
         end
     end
 end

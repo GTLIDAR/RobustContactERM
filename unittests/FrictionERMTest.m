@@ -73,7 +73,7 @@ classdef FrictionERMTest < matlab.unittest.TestCase
         %% --- Tests for the GaussianERM Superclass --- %%
         function testSolutionSize(testCase)
            % Check that the solver returns a solution
-           [f, r] = testCase.solver.solve(testCase.P, testCase.w, testCase.dP, testCase.dw);
+           [f, r] = testCase.solver.solve(testCase.P, testCase.w);
            % Check that the solution is the right size
            testCase.verifyEqual(size(f), size(testCase.x));
            testCase.verifyEqual(size(r), [1,1]);
@@ -81,7 +81,7 @@ classdef FrictionERMTest < matlab.unittest.TestCase
         end
         function testCostFunctionValues(testCase)
             % Get the function value
-            [r, dr] = testCase.solver.ermCost(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
+            [r, dr] = testCase.solver.ermCost(testCase.x, testCase.P, testCase.w);
             % Check the sizes of the values as a first-pass
             testCase.verifyEqual(size(r), [1,1], 'Residual is the wrong size');
             testCase.verifyEqual(size(dr), [1, numel(testCase.x)],'Gradient is the wrong size');
@@ -124,7 +124,7 @@ classdef FrictionERMTest < matlab.unittest.TestCase
            testCase.verifyEqual(size(g_xy), [nX, nY], 'Mixed derivative g_xy is the wrong size');
            % Check the value of the second derivatives
            testCase.verifyEqual(g_xy, [4, 10; 8, 20; -2 6; -2, 6], 'Mixed derivative is inaccurate');
-           
+           % Test the value using finite differences
         end
         function testGradient(testCase)
            nX = numel(testCase.x);
@@ -133,8 +133,9 @@ classdef FrictionERMTest < matlab.unittest.TestCase
            % the parameters
            df = testCase.solver.gradient(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
            % Check that the size is correct
-           testCase.verifyEqual(size(df), [nX, nY], 'Gradient is the wrong size');
+           testCase.verifyEqual(size(df), [nX, nY], 'Gradient is the wrong size');           
         end
+        
     end
 end
 
