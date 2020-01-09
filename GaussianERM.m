@@ -358,7 +358,7 @@ classdef GaussianERM < ContactSolver
                
                if nargout > 4
                    % Calculate the derivatives wrt the parameters y
-                   dtau_y = (tau .* dsigma_y + dmu_y)./m_sigma;
+                   dtau_y = -(tau .* dsigma_y + dmu_y)./m_sigma;
                    dp_y = -pdf .* (dsigma_y ./ m_sigma + tau.*dtau_y);
                    dc_y = m_sigma .* pdf .* dtau_y;
                    

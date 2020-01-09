@@ -18,19 +18,18 @@ classdef DistanceERMTest < matlab.unittest.TestCase
     %       deviation (m_sigma)
     %   2. Sizes of return values for all ERM method outputs
     %   3. ERM Solution is nonnegative definite
+    %   4. PDF and CDF derivatives with respect to parameters
     %
     % Verified approximately correct (numerically verified)
     %   1. ERM Cost function gradient and hessian wrt the decision
     %   variables
     %   2. Gradient and Hessian of PDF and CDF values wrt decision
     %   variables
-    %   3. 
+    %   3. PDF and CDF mixed partials
     %
     % Unverified
     %   1. Cost function mixed partial derivatives
     %   2. ERM solution gradient with respect to parameters
-    %   3. PDF and CDF gradients and mixed partials with respect to
-    %   parameters
     
     properties
         solver;
@@ -111,7 +110,7 @@ classdef DistanceERMTest < matlab.unittest.TestCase
             nX = numel(testCase.x);
             nY = size(testCase.dP,3);
             % Get the values of the pdf and cdf
-            [pdf, cdf, dp_x, dc_x, dp_y, dc_y, dp_xx, dc_xx, dp_yx, dc_yx] = testCase.solver.evalDistribution(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
+            [pdf, cdf, dp_x, dc_x, dp_y, dc_y, dp_xx, dc_xx, dp_xy, dc_xy] = testCase.solver.evalDistribution(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
             % Check that the sizes are accurate
             testCase.verifyEqual(size(pdf), [1,1],'PDF value is the wrong size');
             testCase.verifyEqual(size(cdf), [1,1],'CDF value is the wrong size');
@@ -121,8 +120,14 @@ classdef DistanceERMTest < matlab.unittest.TestCase
             testCase.verifyEqual(size(dc_y),[1, nY],'dc_y value is the wrong size');
             testCase.verifyEqual(size(dp_xx),[1, nX, nX],'dp_xx value is the wrong size');
             testCase.verifyEqual(size(dc_xx),[1, nX, nX],'dc_xx value is the wrong size');
-            testCase.verifyEqual(size(dp_yx),[1,nX, nY],'dp_yx value is the wrong size');
-            testCase.verifyEqual(size(dc_yx), [1,nX, nY],'dc_yx value is the wrong size');
+            testCase.verifyEqual(size(dp_xy),[1,nX, nY],'dp_yx value is the wrong size');
+            testCase.verifyEqual(size(dc_xy), [1,nX, nY],'dc_yx value is the wrong size');
+            % Test PDF and CDF values
+            testCase.verifyEqual(pdf, normpdf(testCase.x(1), 0, 10), 'PDF value is not accurate');
+            testCase.verifyEqual(cdf, normcdf(testCase.x(1), 0, 10), 'CDF value is not accurate');
+            % Test the gradients with respect to parameters y
+            testCase.verifyEqual(dp_y, pdf.*[1/25, 0.10], 'RelTol',1e-15, 'parameter derivative of pdf is not accurate');
+            testCase.verifyEqual(dc_y, -pdf.*[2, 5], 'RelTol', 1e-15, 'parameter derivative of cdf is not accurate');
             % Check the gradients with respect to the solutions
             p_fun = @(z) testCase.solver.evalDistribution(z, testCase.P, testCase.w);
             c_fun = @(z) testCase.outputWrapper2(p_fun, z);
@@ -138,6 +143,13 @@ classdef DistanceERMTest < matlab.unittest.TestCase
             cxx_est  =testCase.finiteDifference(cx_fun, testCase.x);
             testCase.verifyEqual(squeeze(dp_xx), pxx_est, 'RelTol',testCase.tol, 'pdf hessian does not match numerical hessian to desired precision');
             testCase.verifyEqual(squeeze(dc_xx), cxx_est, 'RelTol', testCase.tol, 'cdf hessian does not match numerical hessian to desired precision');
+            % Verify the mixed partial derivatives
+            py_fun = @(z) testCase.outputWrapper5(dp_fun, z);
+            cy_fun = @(z) testCase.outputWrapper6(dp_fun, z);
+            pxy_est = testCase.finiteDifference(py_fun, testCase.x);
+            cxy_est = testCase.finiteDifference(cy_fun, testCase.x);
+            testCase.verifyEqual(squeeze(dp_xy), pxy_est', 'RelTol', testCase.tol, 'pdf mixed partials do not match numerical mixed partials to desired precision');
+            testCase.verifyEqual(squeeze(dc_xy), cxy_est', 'RelTol',testCase.tol, 'cdf mixed partials do not match numerical mixed partials to desired precision');
         end
         function testSecondDerivatives(testCase)
            nX = numel(testCase.x);
@@ -199,6 +211,12 @@ classdef DistanceERMTest < matlab.unittest.TestCase
         end
         function f = outputWrapper4(fun, x)
            [~, ~, ~, f] = fun(x); 
+        end
+        function f = outputWrapper5(fun, x)
+           [~, ~, ~, ~, f] = fun(x); 
+        end
+        function f = outputWrapper6(fun, x)
+            [~, ~, ~, ~, ~, f] = fun(x);
         end
     end
 end
