@@ -21,6 +21,7 @@ classdef GaussianERM < ContactSolver
     % TODO: Check gradient implementation 
     %       Modify calculations for when sigma = 0 (i.e. uncertain
     %       friction, but no contact)
+    %       Warm start ERM Solver - Eliminate problems with singularities
     
     
     properties
@@ -80,7 +81,7 @@ classdef GaussianERM < ContactSolver
            % Cost function
            cost = @(x) ermCost(obj, x, P, w);
            % Initial guess
-           f0 = zeros(size(w));
+           f0 = ones(size(w));
            % Solve the problem
            [f, r, exitflag] = fmincon(cost, f0, -P, w, [], [], zeros(size(f0)), [], [], obj.options);
            if exitflag<=0
@@ -222,11 +223,10 @@ classdef GaussianERM < ContactSolver
            dz_y = dz_y + reshape(dw, [nX,1,nY]);
            dg_yx = 2 * (dz_y .* P + z .* dP);
            % Terms where x < z
-           x_idx = x < z;
            I = eye(nX);
            delta_3 = I .* reshape(I,[nX,1,nX]);
-           dg_xx(x_idx,:,:) = 2*delta_3(x_idx,:,:);
-           dg_yx(x_idx,:,:) = 0;
+           dg_xx(x < z,:,:) = 2*delta_3(x < z,:,:);
+           dg_yx(x < z,:,:) = 0;
            
            %% Higher Derivatives for stochastic variables
            % Get the uncertain variables
@@ -272,7 +272,7 @@ classdef GaussianERM < ContactSolver
            dc_x_mult_y = 2.*(m_sigma.*dsigma_y + m_mu .* dmu_y);
            % Calculate the mixed partial
            df_yx = -pdf_mult_y .* pdf - pdf_common .* dp_y - dp_x_mult_y .* dp_x - ...
-               dp_x_common .* dp_yx + cdf_mult_y .* cdf + dc_x_common .* dc_y + dc_x_mult_y .* dc_x + ...
+               dp_x_common .* dp_yx + cdf_mult_y .* cdf + cdf_common.* dc_y + dc_x_mult_y .* dc_x + ...
                dc_x_common .* dc_yx;
            
            %% Combine the derivatives of the deterministic and stochastic variables
@@ -385,6 +385,80 @@ classdef GaussianERM < ContactSolver
                end
            end
            
+       end
+       function [dg_x, dg_y] = costGradients(obj, x, P, w, dP, dw)
+          %% COSTGRADIENTS: Returns the derivatives of the cost function 
+          %
+          % costGradients returns the values of the derivatives of the cost
+          % function with respect to the decision variables x and
+          % additional parameters y
+          %
+          %   Arguments:
+          %       OBJ:    an instance of the GaussianERM class
+          %       x:      Nx1 double, decision variables of the ERM
+          %               problem
+          %       P:      NxN double, the LCP problem matrix
+          %       w:      Nx1 double, the LCP problem vector
+          %       dP:     NxNxM double, array of derivatives of P
+          %       dw:     NxM double, array of derivatives of w
+          %
+          %  Return values:
+          %       dg_x:  1xN double, the derivative of the cost wrt the
+          %                 decision variables
+          %       dg_y:  1xM double, the derivative of the cost wrt the
+          %                 additional parameters
+          %
+          % note: costGradients is normally used to verify the mixed
+          % partial derivatives of the cost when changing the parameters is
+          % not available (i.e. unit testing)
+          
+          % Calculate the NCP cost for the entire problem
+          z = P * x + w;
+          % Re-calculate the cost for the stochastic variables
+          % Get the mean and standard deviation for each problem
+          [m_mu, dmu_x, dmu_y] = obj.ermMean(x, P, w, dP, dw);
+          [m_sigma, dsigma_x, dsigma_y] = obj.ermDeviation(x, P, w, dP, dw);
+          % Calculate the ERM residual
+          [pdf, cdf, dp_x, dc_x, dp_y, dc_y] = obj.evalDistribution(x, P, w, dP, dw);
+          
+          % Calculate the derivative wrt the decision variable x
+          nX = numel(x);
+          % First derivative for deterministic variables
+          dg_x = 2 * z .* P;
+          Dx = diag(x);
+          dg_x(x < z,:) = 2.*Dx(x < z,:);
+          % First derivative for stochastic variables
+          % Get the stochastic variables
+          % Get the uncertain variables
+          x_s = x(obj.uncertainIdx,:);
+          del_nj = zeros(length(x_s),nX);
+          del_nj(:,obj.uncertainIdx) = eye(sum(obj.uncertainIdx));
+          % Calculate the terms multiplying the distribution values
+          pdf_common = 2.*m_sigma.*dsigma_x .* (x_s + m_mu) + m_sigma.^2 .*(del_nj + dmu_x);
+          dp_x_common = m_sigma.^2 .*(x_s + m_mu);
+          cdf_common = 2*(m_sigma.*dsigma_x + m_mu.*dmu_x - x_s.*del_nj);
+          dc_x_common = m_sigma.^2 + m_mu.^2 - x_s.^2;
+          % The derivative of the stochastic cost
+          df_x = 2.*Dx(obj.uncertainIdx,:) - pdf_common .* pdf - dp_x_common .* dp_x + ...
+              cdf_common .* cdf + dc_x_common .* dc_x;
+          % Combine the two costs
+          dg_x(obj.uncertainIdx,:) = df_x;
+          dg_x = sum(dg_x, 1);
+          
+          % Calculate the derivative wrt the paramters y
+          % Derivative of deterministic variables
+          dz_y = sum(dP .* x', 2);
+          dz_y = reshape(dz_y, [size(dz_y, 1), size(dz_y, 3)]) + dw;
+          dg_y = 2 .* z .* dz_y;
+          dg_y(x < z, :) = 0;
+          % Derivative of stochastic variables
+          p_mult = 2.*m_sigma.*dsigma_y .* (x_s + m_mu) + m_sigma.^2 .* dmu_y;
+          c_mult = 2.*(m_sigma.*dsigma_y + m_mu.*dmu_y);
+          df_y = - p_mult .* pdf - dp_x_common .* dp_y + c_mult .* cdf + dc_x_common .* dc_y;
+          
+          % Combine the derivatives
+          dg_y(obj.uncertainIdx,:) = df_y;
+          dg_y = sum(dg_y, 1);
        end
    end
 end

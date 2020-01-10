@@ -26,10 +26,11 @@ classdef DistanceERMTest < matlab.unittest.TestCase
     %   2. Gradient and Hessian of PDF and CDF values wrt decision
     %   variables
     %   3. PDF and CDF mixed partials
+    %   4. ERM Cost mixed partials, using the parameter gradient and
+    %   varying the decision variables (not varying the parameters).
     %
     % Unverified
-    %   1. Cost function mixed partial derivatives
-    %   2. ERM solution gradient with respect to parameters
+    %   1. ERM solution gradient with respect to parameters
     
     properties
         solver;
@@ -51,7 +52,7 @@ classdef DistanceERMTest < matlab.unittest.TestCase
             testCase.solver = UncertainDistanceERM(plant,mu,sig);
             % Example LCP parameters
             testCase.P = [1    2  0 0;      %LCP problem matrix
-                          2    1  0 0;
+                          2    1  0 1;
                           0    0  1 1;
                           0.5 -1 -1 0];
             testCase.w = [-2, 2, -2, 0]';   %LCP problem vector
@@ -164,7 +165,15 @@ classdef DistanceERMTest < matlab.unittest.TestCase
            fun2 = @(z) testCase.outputWrapper2(fun, z);
            g_xx_est = testCase.finiteDifference(fun2, testCase.x);
            testCase.verifyEqual(g_xx, g_xx_est, 'RelTol',testCase.tol,'Hessian g_xx does not match numerical Hessian to the desired precision');
-           
+           % Check the first parameter derivative
+           [~, g_y] = testCase.solver.costGradients(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
+           pdf = normpdf(2, 0, 10);
+           testCase.verifyEqual(g_y, -[400, 1000] * pdf, 'RelTol',1e-12, 'Cost parameter derivative not accurate to desired precision');
+           % Check that the mixed partials are accurate 
+           dg_fun = @(z) testCase.solver.costGradients(z, testCase.P, testCase.w, testCase.dP, testCase.dw);
+           gy_fun = @(z) testCase.outputWrapper2(dg_fun, z);
+           gxy_est = testCase.finiteDifference(gy_fun, testCase.x);
+           testCase.verifyEqual(g_xy, gxy_est', 'RelTol',testCase.tol, 'Cost Mixed derivative does not match numerical derivative to desired precision');
         end
         function testGradient(testCase)
            nX = numel(testCase.x);
