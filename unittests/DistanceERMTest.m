@@ -68,7 +68,7 @@ classdef DistanceERMTest < matlab.unittest.TestCase
         function testMean(testCase)
             % TESTMEAN: Test the ERMMean function
             % Get the values for the mean
-            [mu, dmu_x, dmu_y, dmu_xx, dmu_xy] = testCase.solver.ermMean(testCase.x,testCase.P,testCase.w,testCase.dP,testCase.dw); 
+            [mu, dmu_x, dmu_xx, dmu_y, dmu_xy] = testCase.solver.ermMean(testCase.x,testCase.P,testCase.w,testCase.dP,testCase.dw); 
             % Check the returned value for the mean
             testCase.verifyEqual(mu, 0,'Failed value check');
             % Check the derivative wrt x
@@ -83,7 +83,7 @@ classdef DistanceERMTest < matlab.unittest.TestCase
         function testDeviation(testCase)
             % TESTDEVIATION: Test the ERMDeviation function           
             % Get the value of the standard deviation
-            [m_sigma, dsigma_x, dsigma_y, dsigma_xx, dsigma_xy]  = testCase.solver.ermDeviation(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
+            [m_sigma, dsigma_x, dsigma_xx, dsigma_y,  dsigma_xy]  = testCase.solver.ermDeviation(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
             % Check the returned value for the standard deviation
             testCase.verifyEqual(m_sigma, 10,'Failed value check');
             % Check the derivative wrt x
@@ -111,7 +111,7 @@ classdef DistanceERMTest < matlab.unittest.TestCase
             nX = numel(testCase.x);
             nY = size(testCase.dP,3);
             % Get the values of the pdf and cdf
-            [pdf, cdf, dp_x, dc_x, dp_y, dc_y, dp_xx, dc_xx, dp_xy, dc_xy] = testCase.solver.evalDistribution(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
+            [pdf, cdf, dp_x, dc_x, dp_xx, dc_xx, dp_y, dc_y, dp_xy, dc_xy] = testCase.solver.evalDistribution(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
             % Check that the sizes are accurate
             testCase.verifyEqual(size(pdf), [1,1],'PDF value is the wrong size');
             testCase.verifyEqual(size(cdf), [1,1],'CDF value is the wrong size');
@@ -145,8 +145,8 @@ classdef DistanceERMTest < matlab.unittest.TestCase
             testCase.verifyEqual(squeeze(dp_xx), pxx_est, 'RelTol',testCase.tol, 'pdf hessian does not match numerical hessian to desired precision');
             testCase.verifyEqual(squeeze(dc_xx), cxx_est, 'RelTol', testCase.tol, 'cdf hessian does not match numerical hessian to desired precision');
             % Verify the mixed partial derivatives
-            py_fun = @(z) testCase.outputWrapper5(dp_fun, z);
-            cy_fun = @(z) testCase.outputWrapper6(dp_fun, z);
+            py_fun = @(z) testCase.outputWrapper7(dp_fun, z);
+            cy_fun = @(z) testCase.outputWrapper8(dp_fun, z);
             pxy_est = testCase.finiteDifference(py_fun, testCase.x);
             cxy_est = testCase.finiteDifference(cy_fun, testCase.x);
             testCase.verifyEqual(squeeze(dp_xy), pxy_est', 'RelTol', testCase.tol, 'pdf mixed partials do not match numerical mixed partials to desired precision');
@@ -184,15 +184,15 @@ classdef DistanceERMTest < matlab.unittest.TestCase
            % Check that the size is correct
            testCase.verifyEqual(size(df), [nX, nY], 'Gradient is the wrong size');
         end
-        function testSolutionSize(testCase)
-            % Check that the solver returns a solution
-            [f, r] = testCase.solver.solve(testCase.P, testCase.w);
-            % Check that the solution is the right size
-            testCase.verifyEqual(size(f), size(testCase.x));
-            testCase.verifyEqual(size(r), [1,1]);
-            % Check that the solution is nonnegative
-            testCase.verifyTrue(all(f >= 0), 'ERM solution is negative');
-        end
+%         function testSolutionSize(testCase)
+%             % Check that the solver returns a solution
+%             [f, r] = testCase.solver.solve(testCase.P, testCase.w);
+%             % Check that the solution is the right size
+%             testCase.verifyEqual(size(f), size(testCase.x));
+%             testCase.verifyEqual(size(r), [1,1]);
+%             % Check that the solution is nonnegative
+%             testCase.verifyTrue(all(f >= 0), 'ERM solution is negative');
+%         end
     end
     methods 
         function df = finiteDifference(obj, fun, x)
@@ -221,11 +221,11 @@ classdef DistanceERMTest < matlab.unittest.TestCase
         function f = outputWrapper4(fun, x)
            [~, ~, ~, f] = fun(x); 
         end
-        function f = outputWrapper5(fun, x)
-           [~, ~, ~, ~, f] = fun(x); 
+        function f = outputWrapper7(fun, x)
+           [~, ~, ~, ~, ~, ~, f] = fun(x); 
         end
-        function f = outputWrapper6(fun, x)
-            [~, ~, ~, ~, ~, f] = fun(x);
+        function f = outputWrapper8(fun, x)
+            [~, ~, ~, ~, ~, ~, ~, f] = fun(x);
         end
     end
 end

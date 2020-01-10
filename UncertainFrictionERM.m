@@ -50,7 +50,7 @@ classdef UncertainFrictionERM < GaussianERM
             obj.uncertainIdx = false(2*obj.numN + obj.numT,1);
             obj.uncertainIdx(obj.numN+obj.numT+1:end,:) = true;
         end
-        function [m_mu, dmu_x, dmu_y, dmu_xx, dmu_xy] = ermMean(obj, x, P, ~, varargin)
+        function [m_mu, dmu_x, dmu_xx, dmu_y, dmu_xy] = ermMean(obj, x, P, ~, varargin)
             %% ERMMEAN: The mean of the Gaussian Distribution for the ERM problem
             %
             %   ermMean returns the mean of the Gaussian Distribution used
@@ -77,13 +77,13 @@ classdef UncertainFrictionERM < GaussianERM
             %               friction cone constraint. numN is the number of
             %               normal friction components (the number of
             %               contact points).
-            %       dmu_x:  numNxN double, the partial derivative of m_mu 
+            %       dmu_x:  numNxN double, the partial derivative of m_mu
             %               with respect to the LCP solution, x
-            %       dmu_y:  numNxM double, the partial derivative of m_mu 
-            %               with respect to any other variables (usually
-            %               state and controls of a dynamical system)
             %       dmu_xx: numNxNxN double, the second partial derivative
             %               of m_mu with respect to the LCP  solution x
+            %       dmu_y:  numNxM double, the partial derivative of m_mu
+            %               with respect to any other variables (usually
+            %               state and controls of a dynamical system)
             %       dmu_xy: numNxNxM double, the mixed partial derivatives
             %               of m_mu with respect to the LCP solution x and
             %               and the parameters y
@@ -93,18 +93,19 @@ classdef UncertainFrictionERM < GaussianERM
             m_mu = obj.mu .* x(1:obj.numN,:) - u * x(obj.numN+1:obj.numN+obj.numT,:);
             % The derivative of the mean with respect to the ERM solution f
             dmu_x = [eye(obj.numN)*obj.mu, -u, zeros(obj.numN)];
-            if nargout > 2
+            % The second derivative
+            dmu_xx = zeros(obj.numN, length(x), length(x));
+            if nargout > 3 
                 dP = varargin{1};
                 numY = size(dP,3);
                 % The derivative with respect to any other parameters
                 dmu_y = zeros(obj.numN, numY);
                 % The first derivatives are constant, so the higher order
                 % derivatives are zero
-                dmu_xx = zeros(obj.numN, length(x), length(x));
                 dmu_xy = zeros(obj.numN, length(x), numY);
             end
         end
-        function [m_sigma, dsigma_x, dsigma_y, dsigma_xx, dsigma_xy]  = ermDeviation(obj, x, ~, ~, varargin)
+        function [m_sigma, dsigma_x, dsigma_xx, dsigma_y, dsigma_xy]  = ermDeviation(obj, x, ~, ~, varargin)
             %% ERMDeviation: The standard deviation of the Gaussian Distribution for the ERM problem
             %
             %   ermDeviation returns the standard deviation of the Gaussian 
@@ -131,14 +132,14 @@ classdef UncertainFrictionERM < GaussianERM
             %               friction cone constraint. numN is the number of
             %               normal friction components (the number of
             %               contact points).
-            %       dsigma_x:  numNxN double, the partial derivative of m_sigma 
+            %       dsigma_x:  numNxN double, the partial derivative of m_sigma
             %               with respect to the LCP solution, x
-            %       dsigma_y:  numNxM double, the partial derivative of m_sigma 
-            %               with respect to any other variables (usually
-            %               state and controls of a dynamical system)
             %       dsigma_xx: numNxNxN double, the second partial
             %               derivative of m_sigma with respect to the LCP
             %               solution x
+            %       dsigma_y:  numNxM double, the partial derivative of m_sigma
+            %               with respect to any other variables (usually
+            %               state and controls of a dynamical system)
             %       dsigma_xy: numNxNxM double, the mixed partial derivative
             %               of m_sigma with respect to the LCP solution x
             %               and the parameters y.
@@ -148,8 +149,10 @@ classdef UncertainFrictionERM < GaussianERM
             % The derivative of the variance with respect to the ERM
             % solution
             dsigma_x = zeros(obj.numN, numX);
-            dsigma_x(1:obj.numN, 1:obj.numN) = obj.sigma * eye(obj.numN); 
-            if nargout > 2
+            dsigma_x(1:obj.numN, 1:obj.numN) = obj.sigma * eye(obj.numN);
+            % The second derivative
+            dsigma_xx = zeros(obj.numN, numX, numX);
+            if nargout > 3
                 dP = varargin{1};
                 numY = size(dP,3);
                 % The derivative of the variance with respect to any other
@@ -157,7 +160,6 @@ classdef UncertainFrictionERM < GaussianERM
                 dsigma_y  = zeros(obj.numN, numY);
                 % The first derivatives are constants, so all the higher order
                 % derivatives are zero
-                dsigma_xx = zeros(obj.numN, numX, numX);
                 dsigma_xy = zeros(obj.numN, numX, numY);
             end
         end

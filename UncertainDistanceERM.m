@@ -52,7 +52,7 @@ classdef UncertainDistanceERM < GaussianERM
            % Record the timestep for use later
            obj.timestep = plant.timestep;
        end
-       function [m_mu, dmu_x, dmu_y, dmu_xx, dmu_xy] = ermMean(obj, x, P, w, varargin)
+       function [m_mu, dmu_x, dmu_xx, dmu_y, dmu_xy] = ermMean(obj, x, P, w, varargin)
            %% ERMMEAN: The mean of the Gaussian Distribution for the ERM problem
            %
            %   ermMean returns the mean of the Gaussian Distribution used
@@ -81,13 +81,13 @@ classdef UncertainDistanceERM < GaussianERM
            %               contact points).
            %       dmu_x:  numNxN double, the partial derivative of m_mu
            %               with respect to the LCP solution, x
+           %       dmu_xx: numNxNxN double, the second partial derivative
+           %               of m_mu with respect to the LCP  solution x
            %       dmu_y:  numNxM double, the partial derivative of m_mu
            %               with respect to any other variables (usually
            %               state and controls of a dynamical system)
-           %       dmu_xx: numNxNxN double, the second partial derivative 
-           %               of m_mu with respect to the LCP  solution x
            %       dmu_xy: numNxNxM double, the mixed partial derivatives
-           %               of m_mu with respect to the LCP solution x and 
+           %               of m_mu with respect to the LCP solution x and
            %               and the parameters y
            
            % Get the size of the problem and the number of additional
@@ -101,7 +101,9 @@ classdef UncertainDistanceERM < GaussianERM
            dmu_x = zeros(obj.numN, numel(x));
            dmu_x(1:obj.numN, 1:obj.numN+obj.numT) = P(1:obj.numN, 1:obj.numN+obj.numT);
            
-           if nargout > 2
+           % Second derivative with respect to the ERM solution, f
+           dmu_xx = zeros(obj.numN, numel(x), numel(x));
+           if nargout > 3
                dP = varargin{1};
                dw = varargin{2};
                % The derivative with respect to any other parameters
@@ -110,16 +112,12 @@ classdef UncertainDistanceERM < GaussianERM
                dP_x = reshape(dP_x, [size(dP_x,1),size(dP_x, 3)]);
                dz_y = dP_x + dw;
                dmu_y = dz_y(1:obj.numN,:);
-               
-               % Second derivative with respect to the ERM solution, f
-               dmu_xx = zeros(obj.numN, numel(x), numel(x));
-               
                % Mixed partial derivative with respect to the solution f and
                % the parameters y
                dmu_xy = dP(1:obj.numN, :,:);
            end
        end
-       function [m_sigma, dsigma_x, dsigma_y, dsigma_xx, dsigma_xy]  = ermDeviation(obj, x, ~, ~, varargin)
+       function [m_sigma, dsigma_x, dsigma_xx, dsigma_y, dsigma_xy]  = ermDeviation(obj, x, ~, ~, varargin)
            %% ERMDeviation: The standard deviation of the Gaussian Distribution for the ERM problem
            %
            %   ermDeviation returns the standard deviation of the Gaussian
@@ -148,16 +146,17 @@ classdef UncertainDistanceERM < GaussianERM
            %               contact points).
            %       dsigma_x:  numNxN double, the partial derivative of m_sigma
            %               with respect to the LCP solution, x
+           %       dsigma_xx: numNxNxN double, the second partial
+           %               derivative of m_sigma with respect to the LCP
+           %               solution x
            %       dsigma_y:  numNxM double, the partial derivative of m_sigma
            %               with respect to any other variables (usually
            %               state and controls of a dynamical system)
-           %       dsigma_xx: numNxNxN double, the second partial 
-           %               derivative of m_sigma with respect to the LCP
-           %               solution x
            %       dsigma_xy: numNxNxM double, the mixed partial derivative
            %               of m_sigma with respect to the LCP solution x
            %               and the parameters y.
-
+           
+           numX = numel(x);
            % Calculate the variance
            m_sigma = obj.sigma ./ obj.timestep * ones(obj.numN,1);
            
@@ -167,15 +166,14 @@ classdef UncertainDistanceERM < GaussianERM
            % The derivative of the variance with respect to the ERM
            % solution
            dsigma_x = zeros(obj.numN,length(x));
-           if nargout > 2
+           % Second derivative
+           dsigma_xx = zeros(obj.numN, numX, numX);
+           if nargout > 3
                dP = varargin{1};
                numY = size(dP,3);
-               numX = numel(x);
                % The derivative of the variance with respect to any other
                % parameters
                dsigma_y  = zeros(obj.numN, numY);
-               % Second derivative
-               dsigma_xx = zeros(obj.numN, numX, numX);
                % Mixed derivative
                dsigma_xy = zeros(obj.numN, numX, numY);
            end
