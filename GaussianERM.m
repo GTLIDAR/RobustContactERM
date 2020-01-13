@@ -80,6 +80,8 @@ classdef GaussianERM < ContactSolver
            
            % Cost function
            cost = @(x) ermCost(obj, x, P, w);
+           % Hessian function
+           obj.options = optimoptions(obj.options, 'HessianFcn',@(x, lambda) ermSecondDerivatives(obj, x, P, w));
            % Initial guess
            f0 = ones(size(w));
            % Solve the problem
@@ -88,6 +90,7 @@ classdef GaussianERM < ContactSolver
               warning('FMINCON might have terminated before a solution was found'); 
            end
        end
+
        function df = gradient(obj, f, P, w, dP, dw)
            %% ERM_COST: Objective function for the ERM approach
            %

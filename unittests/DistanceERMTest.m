@@ -184,15 +184,15 @@ classdef DistanceERMTest < matlab.unittest.TestCase
            % Check that the size is correct
            testCase.verifyEqual(size(df), [nX, nY], 'Gradient is the wrong size');
         end
-%         function testSolutionSize(testCase)
-%             % Check that the solver returns a solution
-%             [f, r] = testCase.solver.solve(testCase.P, testCase.w);
-%             % Check that the solution is the right size
-%             testCase.verifyEqual(size(f), size(testCase.x));
-%             testCase.verifyEqual(size(r), [1,1]);
-%             % Check that the solution is nonnegative
-%             testCase.verifyTrue(all(f >= 0), 'ERM solution is negative');
-%         end
+        function testSolutionSize(testCase)
+            % Check that the solver returns a solution
+            [f, r] = testCase.solver.solve(testCase.P, testCase.w);
+            % Check that the solution is the right size
+            testCase.verifyEqual(size(f), size(testCase.x));
+            testCase.verifyEqual(size(r), [1,1]);
+            % Check that the solution is nonnegative
+            testCase.verifyTrue(all(f >= 0), 'ERM solution is negative');
+        end
     end
     methods 
         function df = finiteDifference(obj, fun, x)
