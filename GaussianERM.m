@@ -121,7 +121,7 @@ classdef GaussianERM < ContactSolver
            % NOTE: Check if we need to zero out the components of the
            % gradient corresponding to the zero solution.
        end
-       function [r, dr, ddr] = ermCost(obj, x, P, w)
+       function [r, dr] = ermCost(obj, x, P, w)
            %% ERMCOST: Objective function for the ERM approach
            %
            %   ERMCOST returns the sum of the expected residuals for the
@@ -145,11 +145,11 @@ classdef GaussianERM < ContactSolver
            % Calculate the NCP cost for the entire problem
            z = P * x + w;
            r = min(x, z).^2;
-           % Re-calculate the cost for the stochastic variables
-           x_s = x(obj.uncertainIdx,:);
            % Get the mean and standard deviation for each problem
            [m_mu, dmu_x,] = obj.ermMean(x, P, w);
            [m_sigma, dsigma_x] = obj.ermDeviation(x, P, w);
+           % Re-calculate the cost for the stochastic variables
+           x_s = x(obj.uncertainIdx,:);
            % Calculate the ERM residual
            [pdf, cdf, dp_x, dc_x] = obj.evalDistribution(x, P, w);
            % Calculate the residuals for only the stochastic part
@@ -182,10 +182,6 @@ classdef GaussianERM < ContactSolver
                % Combine the two costs
                dr(obj.uncertainIdx,:) = df_x;
                dr = sum(dr, 1);
-               if nargout == 3
-                   %% Calculate the Hessian
-                    ddr = obj.ermSecondDerivatives(x, P, w);
-               end
            end
        end
    end
@@ -276,7 +272,6 @@ classdef GaussianERM < ContactSolver
            % Combine the partial derivatives together
            dg_xx(obj.uncertainIdx,:,:) = df_xx;
            dg_xx = squeeze(sum(dg_xx, 1));
-           
            %% Mixed partial derivative
            if nargout == 2
                % Deterministic terms
@@ -379,7 +374,7 @@ classdef GaussianERM < ContactSolver
                % The derivatives of the pdf and cdf values wrt x
                dp_const = dsigma_x ./m_sigma + tau.*dtau_x;  % Term common in derivatives of pdf
                dp_x = - pdf .* dp_const;
-               dc_x = m_sigma .* pdf .* dtau_x;
+               dc_x = - pdf .* tau_const;
                
                if nargout > 4
                    
@@ -390,12 +385,12 @@ classdef GaussianERM < ContactSolver
                    dsigma_xk = reshape(dsigma_x, [size(dsigma_x, 1), 1, size(dsigma_x, 2)]);
                    dtau_xk = reshape(dtau_x, [size(dtau_x, 1), 1, size(dtau_x, 2)]);
                    % The second derivative of TAU
-                   dtau_xx = tau_const .* dsigma_xk ./ (m_sigma.^2) - (dtau_x .* dsigma_xk + tau.*dsigma_xx + dmu_xx)./m_sigma;
+                   dtau_xx = tau_const .* dsigma_xk .* (m_sigma.^-1).^2 - (dtau_xk .* dsigma_x + tau.*dsigma_xx + dmu_xx)./m_sigma;
                    
                    dp_x2 = reshape(dp_x, [size(dp_x,1), 1, size(dp_x,2)]);
 
                    % Calculate the second derivatives
-                   dp_xx = -dp_x2 .* dp_const - pdf .* (-dsigma_x .* dsigma_xk ./ m_sigma.^2 + dsigma_xx./m_sigma + dtau_x .* dtau_xk + tau.*dtau_xx);
+                   dp_xx = -dp_x2 .* dp_const - pdf .* (-dsigma_x .* dsigma_xk .* (m_sigma.^-1).^2 + dsigma_xx./m_sigma + dtau_x .* dtau_xk + tau.*dtau_xx);
                    dc_xx = dsigma_xk .* pdf .* dtau_x + m_sigma .* (dp_x2 .* dtau_x + pdf .* dtau_xx);
                    if nargout > 6
                        % Broadcast some of the variables

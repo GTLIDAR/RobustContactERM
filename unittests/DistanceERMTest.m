@@ -193,6 +193,7 @@ classdef DistanceERMTest < matlab.unittest.TestCase
             % Check that the solution is nonnegative
             testCase.verifyTrue(all(f >= 0), 'ERM solution is negative');
         end
+
     end
     methods 
         function df = finiteDifference(obj, fun, x)

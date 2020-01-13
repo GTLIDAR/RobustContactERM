@@ -12,6 +12,9 @@ classdef FrictionERMTest < matlab.unittest.TestCase
         x;      % LCP solution
         dP;     % LCP matrix gradient
         dw;     % LCP offset gradient
+        % Finite difference parameters
+        h = 1e-8;       % Step size for finite differencing
+        tol = 1e-6;     % Relative Error Tolerance for finite differencing
     end
     
     methods (TestMethodSetup)
@@ -41,7 +44,7 @@ classdef FrictionERMTest < matlab.unittest.TestCase
             %% TESTMEAN: Test the ERMMean function
                        
             % Get the values for the mean
-            [mu, dmu_x, dmu_y, dmu_xx, dmu_xy] = testCase.solver.ermMean(testCase.x,testCase.P,testCase.w,testCase.dP,testCase.dw);
+            [mu, dmu_x, dmu_xx, dmu_y, dmu_xy] = testCase.solver.ermMean(testCase.x,testCase.P,testCase.w,testCase.dP,testCase.dw);
             
             % Check the returned value for the mean
             testCase.verifyEqual(mu, 0,'Failed value check');
@@ -58,7 +61,7 @@ classdef FrictionERMTest < matlab.unittest.TestCase
             %% TESTDEVIATION: Test the ERMDeviation function
             
             % Get the value of the standard deviation
-            [m_sigma, dsigma_x, dsigma_y, dsigma_xx, dsigma_xy]  = testCase.solver.ermDeviation(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
+            [m_sigma, dsigma_x, dsigma_xx,  dsigma_y, dsigma_xy]  = testCase.solver.ermDeviation(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
             % Check the returned value for the standard deviation
             testCase.verifyEqual(m_sigma, 0.2,'Failed value check');
             % Check the derivative wrt x
@@ -71,27 +74,22 @@ classdef FrictionERMTest < matlab.unittest.TestCase
             testCase.verifyEqual(dsigma_xy, zeros(1,4,2),'Failed mixed derivative check');
         end
         %% --- Tests for the GaussianERM Superclass --- %%
-        function testSolutionSize(testCase)
-           % Check that the solver returns a solution
-           [f, r] = testCase.solver.solve(testCase.P, testCase.w);
-           % Check that the solution is the right size
-           testCase.verifyEqual(size(f), size(testCase.x));
-           testCase.verifyEqual(size(r), [1,1]);
-            
-        end
         function testCostFunctionValues(testCase)
             % Get the function value
             [r, dr] = testCase.solver.ermCost(testCase.x, testCase.P, testCase.w);
             % Check the sizes of the values as a first-pass
             testCase.verifyEqual(size(r), [1,1], 'Residual is the wrong size');
             testCase.verifyEqual(size(dr), [1, numel(testCase.x)],'Gradient is the wrong size');
-            % Check for accuracy of the values (?)
+            % Check for accuracy of the values using finite difference
+            fun = @(z) testCase.solver.ermCost(z, testCase.P, testCase.w);
+            dr_est = testCase.finiteDifference(fun, testCase.x);
+            testCase.verifyEqual(dr, dr_est, 'RelTol',testCase.tol, "Gradient doesn't match numerical gradient to desired precision");
         end
         function testDistributionValues(testCase)
             nX = numel(testCase.x);
             nY = size(testCase.dP,3);
             % Get the values of the pdf and cdf
-            [pdf, cdf, dp_x, dc_x, dp_y, dc_y, dp_xx, dc_xx, dp_yx, dc_yx] = testCase.solver.evalDistribution(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
+            [pdf, cdf, dp_x, dc_x, dp_xx, dc_xx, dp_y, dc_y, dp_yx, dc_yx] = testCase.solver.evalDistribution(testCase.x, testCase.P, testCase.w, testCase.dP, testCase.dw);
             % Check that the sizes are accurate
             testCase.verifyEqual(size(pdf), [1,1],'PDF value is the wrong size');
             testCase.verifyEqual(size(cdf), [1,1],'CDF value is the wrong size');
@@ -111,8 +109,32 @@ classdef FrictionERMTest < matlab.unittest.TestCase
             testCase.verifyEqual(dp_yx, zeros(1,nX, nY), 'dp_yx is nonzero');
             testCase.verifyEqual(dc_y, zeros(1, nY), 'dc_y is nonzero');
             testCase.verifyEqual(dc_yx, zeros(1,nX, nY), 'dc_yx is nonzero');
-            % Check that the nonzero values are accurate
+            % Check the gradients against analytic results
+            testCase.verifyEqual(dp_x, [24.5, -25, -25, -25]*pdf, 'RelTol',1e-12, 'pdf gradient is inaccurate');
+            testCase.verifyEqual(dc_x, [-1, 1, 1, 1]*pdf, 'RelTol',1e-12, 'cdf gradient is inaccurate');
+            % Check the gradients with respect to the solutions
+            pxx_analytic = [550.5, -575, -575, -575;
+                            -575, 600, 600, 600;
+                            -575, 600, 600, 600;
+                            -575, 600, 600, 600] * pdf;
+            testCase.verifyEqual(squeeze(dp_xx), pxx_analytic, 'RelTol', 1e-12, 'pdf hessian is inaccurate');
             
+            % Verify the first derivatives with respect to x numerically
+%             p_fun = @(z) testCase.solver.evalDistribution(z, testCase.P, testCase.w);
+%             c_fun = @(z) testCase.outputWrapper2(p_fun, z);
+%             dp_est = testCase.finiteDifference(p_fun, testCase.x);
+%             dc_est = testCase.finiteDifference(c_fun, testCase.x);
+%             testCase.verifyEqual(dp_x, dp_est, 'RelTol',testCase.tol,'pdf gradient does not match numerical gradient to desired precision');
+%             testCase.verifyEqual(dc_x ,dc_est, 'RelTol',testCase.tol, 'cdf gradient does not match numerical gradient to desired precision');
+%             
+            % Verify the second derivatives with respect to x numerically
+            dp_fun = @(z) testCase.solver.evalDistribution(z, testCase.P, testCase.w, testCase.dP, testCase.dw);
+            px_fun = @(z) testCase.outputWrapper3(dp_fun, z);
+            cx_fun = @(z) testCase.outputWrapper4(dp_fun, z);
+            pxx_est = testCase.finiteDifference(px_fun, testCase.x);
+            cxx_est = testCase.finiteDifference(cx_fun, testCase.x);
+            testCase.verifyEqual(squeeze(dp_xx), pxx_est, 'RelTol',testCase.tol, 'pdf hessian does not match numerical hessian to desired precision');
+            testCase.verifyEqual(squeeze(dc_xx), cxx_est, 'RelTol', testCase.tol, 'cdf hessian does not match numerical hessian to desired precision');
         end
         function testSecondDerivatives(testCase)
            nX = numel(testCase.x);
@@ -124,7 +146,11 @@ classdef FrictionERMTest < matlab.unittest.TestCase
            testCase.verifyEqual(size(g_xy), [nX, nY], 'Mixed derivative g_xy is the wrong size');
            % Check the value of the second derivatives
            testCase.verifyEqual(g_xy, [4, 10; 8, 20; -2 6; -2, 6], 'Mixed derivative is inaccurate');
-           % Test the value using finite differences
+           % Test the value of the hessian using finite differences
+           fun = @(z) testCase.solver.ermCost(z, testCase.P, testCase.w);
+           fun2 = @(z) testCase.outputWrapper2(fun, z);
+           g_xx_est = testCase.finiteDifference(fun2, testCase.x);
+           testCase.verifyEqual(g_xx, g_xx_est, 'RelTol',testCase.tol,'Hessian g_xx does not match numerical Hessian to the desired precision');
         end
         function testGradient(testCase)
            nX = numel(testCase.x);
@@ -135,7 +161,49 @@ classdef FrictionERMTest < matlab.unittest.TestCase
            % Check that the size is correct
            testCase.verifyEqual(size(df), [nX, nY], 'Gradient is the wrong size');           
         end
-        
+        function testSolutionSize(testCase)
+            % Check that the solver returns a solution
+            [f, r] = testCase.solver.solve(testCase.P, testCase.w);
+            % Check that the solution is the right size
+            testCase.verifyEqual(size(f), size(testCase.x));
+            testCase.verifyEqual(size(r), [1,1]);
+                        % Check that the solution is nonnegative
+            testCase.verifyTrue(all(f >= 0), 'ERM solution is negative');
+        end
+    end
+    methods
+        function df = finiteDifference(obj, fun, x)
+            
+            % Output size
+            f = fun(x);
+            df = zeros(numel(f), numel(x));
+            % Shifts
+            dx = obj.h./2 .* eye(numel(x));
+            
+            % Use a central difference
+            for n = 1:numel(x)
+                f1 = fun(x + dx(:,n));
+                f2 = fun(x - dx(:,n));
+                df(:,n) = (f1 - f2)./obj.h;
+            end
+        end
+    end
+    methods (Static)
+        function f = outputWrapper2(fun, x)
+            [~, f] = fun(x);
+        end
+        function f = outputWrapper3(fun,x)
+            [~, ~, f] = fun(x);
+        end
+        function f = outputWrapper4(fun, x)
+            [~, ~, ~, f] = fun(x);
+        end
+        function f = outputWrapper7(fun, x)
+            [~, ~, ~, ~, ~, ~, f] = fun(x);
+        end
+        function f = outputWrapper8(fun, x)
+            [~, ~, ~, ~, ~, ~, ~, f] = fun(x);
+        end
     end
 end
 
