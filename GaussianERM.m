@@ -22,12 +22,14 @@ classdef GaussianERM < ContactSolver
     %       Modify calculations for when sigma = 0 (i.e. uncertain
     %       friction, but no contact)
     %       Warm start ERM Solver - Eliminate problems with singularities
-    
+    %       Fix problem with gradient with the Hessian is singular
+    %       (specifically a zero row or column)
     
     properties
-        mu;              %Mean of the distribution over the uncertain parameter (NOT the mean used by the final ERM formula)
-        sigma;           %Standard deviation of the distribution over the uncertain parameters
-        options;         %Options structure for FMINUNC
+        mu;              % Mean of the distribution over the uncertain parameter (NOT the mean used by the final ERM formula)
+        sigma;           % Standard deviation of the distribution over the uncertain parameters
+        options;         % Options structure for FMINUNC
+        guess = [];      % Initial guess for ERM
     end
     properties (SetAccess = protected)
         uncertainIdx;    %Logical index indicating which variables are affected by the uncertainty
@@ -78,20 +80,21 @@ classdef GaussianERM < ContactSolver
            %       r:      scalar double, the residual (cost function
            %               evaluation)
            
+           % Calculate an initial guess
+           f0 = pathlcp(P, w);
            % Cost function
            cost = @(x) ermCost(obj, x, P, w);
            % Hessian function
            obj.options = optimoptions(obj.options, 'HessianFcn',@(x, lambda) ermSecondDerivatives(obj, x, P, w));
-           % Initial guess
-           f0 = ones(size(w));
            % Solve the problem
            [f, r, exitflag] = fmincon(cost, f0, -P, w, [], [], zeros(size(f0)), [], [], obj.options);
            if exitflag<=0
               warning('FMINCON might have terminated before a solution was found'); 
            end
+           obj.guess =f0;
        end
 
-       function df = gradient(obj, f, P, w, dP, dw)
+       function df = gradient(obj, x, P, w, dP, dw)
            %% ERM_COST: Objective function for the ERM approach
            %
            %   ERM_COST returns the sum of the expected residuals for the
@@ -112,12 +115,15 @@ classdef GaussianERM < ContactSolver
            %   Return Values:
            %       df:    NxM double, the derivatives of the solution f
            %              with respect to the other problem variables (usually state and control)
-           
-           % Get the second derivatives
-           [g_ff, g_fy] = obj.ermSecondDerivatives(f, P, w, dP, dw);
-           % Solve the system of equations to get the gradient
-           df = - g_ff\g_fy;
-           
+           warning('error','MATLAB:singularMatrix');
+           try
+               % Get the second derivatives
+               [g_xx, g_xy] = obj.ermSecondDerivatives(x, P, w, dP, dw);
+               % Solve the system of equations to get the gradient
+               df = - g_xx\g_xy;
+           catch
+               disp('warning caught');
+           end
            % NOTE: Check if we need to zero out the components of the
            % gradient corresponding to the zero solution.
        end

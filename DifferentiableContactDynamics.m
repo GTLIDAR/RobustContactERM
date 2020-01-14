@@ -96,6 +96,7 @@ classdef DifferentiableContactDynamics
             
             % Invert the mass matrix, as we'll use the inverse several
             % times.
+            
             Minv = M\eye(obj.numQ);
                         
             % Calculate the dynamics f

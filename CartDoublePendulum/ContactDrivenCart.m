@@ -47,7 +47,7 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             nU = 2;
             obj = obj@Manipulator(nQ, nU);
             % We can optionally set input limits for the acrobot
-            obj = setInputLimits(obj,-15,15);
+%             obj = setInputLimits(obj,-15,15);
         end 
         function [H,C,B, dH, dC, dB] = manipulatorDynamics(obj,q,dq)
             
