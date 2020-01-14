@@ -96,12 +96,12 @@ classdef DifferentiableContactDynamics
             
             % Invert the mass matrix, as we'll use the inverse several
             % times.
-            
-            Minv = M\eye(obj.numQ);
+            R = chol(M);
+            %Minv = M\eye(obj.numQ);
                         
             % Calculate the dynamics f
             tau = B*u - C*dq - N;
-            ddq = Minv*(tau + (Jc * fc)./obj.timestep);
+            ddq = R\(R'\(tau + (Jc * fc)./obj.timestep));
             
             % Time-stepping dynamics (semi-implicit, evaluated at the next time
             % step)
@@ -131,7 +131,7 @@ classdef DifferentiableContactDynamics
                 % Gradient of the inverse mass matrix
                 dMinv = zeros(size(dM));
                 for n = 1:obj.numQ
-                    dMinv(:,:,n) = -Minv * dM(:,:,n) * Minv;
+                    dMinv(:,:,n) = -R\(R'\dM(:,:,n)/R)/R';
                 end
                 % Multiply by tau
                 dMinv_tau = times(dMinv, reshape(tau, [1, obj.numQ, 1]));
@@ -141,11 +141,11 @@ classdef DifferentiableContactDynamics
                 dMinv_fc = squeeze(sum(dMinv_fc,2));
                         
                 % Calculate the partial derivatives
-                df2_q = dMinv_tau + + Minv*dtau_q + (dMinv_fc + Minv*(dJc_f + Jc*dfc_q))/ obj.timestep;
+                df2_q = dMinv_tau + R\(R'\dtau_q) + (dMinv_fc + (R\(R'\(dJc_f + Jc*dfc_q))))/ obj.timestep;
                 
-                df2_dq =  Minv*(dtau_dq + Jc*dfc_dq/obj.timestep);
+                df2_dq =  R\(R'\(dtau_dq + Jc*dfc_dq/obj.timestep));
                 
-                df2_u = Minv * B + Minv * (Jc * dfc_u)./obj.timestep;
+                df2_u = R\(R'\(B + (Jc * dfc_u)./obj.timestep));
                 
                 df_q = [obj.timestep * df2_q; df2_q];
                 df_dq = [eye(obj.numQ) + obj.timestep * df2_dq; df2_dq];
@@ -184,7 +184,8 @@ classdef DifferentiableContactDynamics
             [B, dB] = obj.controllerMatrix(qhat);
             
             % Invert the mass matrix, as we'll be using the inverse often
-            iM = M\eye(obj.numQ);
+            R = chol(M);
+            %iM = M\eye(obj.numQ);
             [Jn, Jt, dJn, dJt, alphas] = obj.contactJacobian(qhat);
 
             % Collect the contact Jacobian into one term:
@@ -198,7 +199,7 @@ classdef DifferentiableContactDynamics
             % Calculate the force effects, tau, and the no-contact velocity
             % vel:
             tau = B*u - C*dq - N;
-            vel = dq + obj.timestep * iM * tau;
+            vel = dq + obj.timestep * (R\(R'\tau));
            
             % The LCP offset vector
             z(1:numN) = Jn*vel + (Jn*q - alphas)/obj.timestep;
@@ -211,8 +212,8 @@ classdef DifferentiableContactDynamics
             for n = 1:numN
                 w(n,numT*(n-1)+1:numT*n) = 1;
             end
-                        
-            P(1:numN + numT, 1:numN + numT) = Jc * iM * Jc';
+            Jr = Jc/R;            
+            P(1:numN + numT, 1:numN + numT) = Jr * Jr';
             P(numN+1:numN+numT, numN+numT+1:end) = w';
             P(numN + numT+1:end,1:numN) = eye(numN) * obj.terrain.friction_coeff;
             P(numN+numT+1:end,numN+1:numN+numT) = -w;
@@ -224,8 +225,8 @@ classdef DifferentiableContactDynamics
             diM = zeros(obj.numQ*[1, 1, 1]);
             dP = zeros(numT+2*numN, numT+2*numN, 2*obj.numQ + obj.numU);
             for n = 1:obj.numQ
-                diM(:,:,n) = -iM * dM(:,:,n) * iM;
-                dP(1:numN + numT, 1:numN + numT,n) = dJc(:,:,n) * iM * Jc' + Jc * diM(:,:,n) * Jc' + Jc * iM * dJc(:,:,n)';
+                diM(:,:,n) = -R\(R'\dM(:,:,n)/R)/R';
+                dP(1:numN + numT, 1:numN + numT,n) = dJc(:,:,n) * (R\Jr') + Jc * diM(:,:,n) * Jc' + (Jr/R') * dJc(:,:,n)';
             end
             % Gradient of P wrt dq
             dP(:,:,obj.numQ+1:2*obj.numQ) = obj.timestep * dP(:,:,1:obj.numQ);
@@ -252,10 +253,10 @@ classdef DifferentiableContactDynamics
             dz_common = dJc_v + obj.timestep * Jc * diM_tau;
             
             % Gradient wrt q, dq
-            dz_q = dz_common + obj.timestep* Jc * iM * dtau_q;
+            dz_q = dz_common + obj.timestep* (Jr/R') * dtau_q;
             dz_q(1:numN,:) = dz_q(1:numN,:) + Jn ./ obj.timestep;
-            dz_dq = obj.timestep * dz_common + Jc * (eye(obj.numQ) + obj.timestep * iM * dtau_dq);
-            dz_u = obj.timestep * Jc * iM * B;
+            dz_dq = obj.timestep * dz_common + Jc * (eye(obj.numQ) + obj.timestep * (R\(R'\dtau_dq)));
+            dz_u = obj.timestep * (Jr/R') * B;
             
             
             % Collect all the gradients in one

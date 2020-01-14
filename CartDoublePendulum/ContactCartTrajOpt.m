@@ -44,18 +44,18 @@ Tf = 5;     % Five seconds for this problem
 prob = DirtranTrajectoryOptimization(plant, N, Tf);
 
 % Add a running cost
-%prob = prob.addRunningCost(@cost);
+prob = prob.addRunningCost(@cost);
 % Add a terminal cost
-prob = prob.addFinalCost(@(t, x) terminalCost2(t, x, xf));
+%prob = prob.addFinalCost(@(t, x) terminalCost2(t, x, xf));
 % Add the initial and final value constraints
 prob = prob.addStateConstraint(ConstantConstraint(x0),1);
-%prob = prob.addStateConstraint(ConstantConstraint(xf),N);
+prob = prob.addStateConstraint(ConstantConstraint(xf),N);
 
 % Set the options for the solver
 prob = prob.setSolver('snopt');
 prob = prob.setSolverOptions('snopt','MajorFeasibilityTolerance',1e-3);
 prob = prob.setSolverOptions('snopt','MajorOptimalityTolerance',1e-3);
-prob = prob.setSolverOptions('snopt','ScaleOption',2);
+prob = prob.setSolverOptions('snopt','ScaleOption',1);
 prob = prob.setSolverOptions('snopt','IterationsLimit',20000);
 % Create the initial guess at the solution
 t_init = linspace(0, Tf, N);
