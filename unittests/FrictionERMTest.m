@@ -170,6 +170,36 @@ classdef FrictionERMTest < matlab.unittest.TestCase
                         % Check that the solution is nonnegative
             testCase.verifyTrue(all(f >= 0), 'ERM solution is negative');
         end
+        %% --- Test for Probabilistic Degeneracy --- $$
+        function testDegeneracy(testCase)
+           % Import the IsFinite condition
+           import matlab.unittest.constraints.IsFinite;
+           % Create the degenerate case
+           xd = [0,0,1,1]'; % Degenerate because the 1st component is zero
+           % Check the standard deviation
+           sigma = testCase.solver.ermDeviation(xd, testCase.P, testCase.w);
+           testCase.assertEqual(sigma, 0, 'Sigma is nonzero');
+           % Check the cost function and it's gradient
+           [g, dg] = testCase.solver.ermCost(xd, testCase.P, testCase.w);
+           testCase.verifyThat(g, IsFinite, 'cost is not finite or is NaN');
+           testCase.verifyThat(dg, IsFinite, 'cost gradient is not finite or is NaN');
+           % Check the second derivatives
+           [gxx, gxy] = testCase.solver.ermSecondDerivatives(xd, testCase.P, testCase.w, testCase.dP, testCase.dw);
+           testCase.verifyThat(gxx, IsFinite, 'cost hessian is not finite or is NaN');
+           testCase.verifyThat(gxy, IsFinite, 'cost mixed partials are not finite or are NaN');
+           % Compare gradients to numerical finite differneces
+%            cost = @(x) testCase.solver.ermCost(x, testCase.P, testCase.w);
+%            dg_est = testCase.finiteDifference(cost, xd);
+%            testCase.verifyEqual(dg, dg_est, 'RelTol',testCase.tol,'Degenerate gradient does not match numerical gradient to desired precision');
+%            dcost = @(x) testCase.solver.costGradients(x, testCase.P, testCase.w, testCase.dP, testCase.dw);
+%            ddg_est = testCase.finiteDifference(dcost, xd);
+%            testCase.verifyEqual(gxx, ddg_est, 'RelTol',testCase.tol,'Degenerate hessian does not match numerical hessian to desired precision');
+        % NOTE: Finite differencing doesn't work in the degenerate case
+        % because the backwards difference (x-dx) produces a negative
+        % standard deviation. Otherwise, the non-nan values match the
+        % derivatives
+        end
+        
     end
     methods
         function df = finiteDifference(obj, fun, x)

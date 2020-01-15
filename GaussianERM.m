@@ -30,6 +30,7 @@ classdef GaussianERM < ContactSolver
         sigma;           % Standard deviation of the distribution over the uncertain parameters
         options;         % Options structure for FMINUNC
         guess = [];      % Initial guess for ERM
+        Reg = [];        % Regularizer matrix
     end
     properties (SetAccess = protected)
         uncertainIdx;    %Logical index indicating which variables are affected by the uncertainty
@@ -63,6 +64,7 @@ classdef GaussianERM < ContactSolver
            obj.sigma = s;
            obj.uncertainIdx = idx;
            obj.options = optimoptions('fmincon','Algorithm','interior-point','SpecifyObjectiveGradient',true,'display','none');
+           obj.Reg = zeros(numel(idx));
        end
        function [f, r] = solve(obj, P, w)
            %% SOLVE: Calculate the solution to the ERM problem
@@ -158,11 +160,19 @@ classdef GaussianERM < ContactSolver
            x_s = x(obj.uncertainIdx,:);
            % Calculate the ERM residual
            [pdf, cdf, dp_x, dc_x] = obj.evalDistribution(x, P, w);
+           % Check for the degenerate case
+           %zeroIdx = (m_sigma == 0);
            % Calculate the residuals for only the stochastic part
-           r(obj.uncertainIdx,:) = x_s.^2 - m_sigma.^2 .* (x_s + m_mu).*pdf + ...
+           r_s = x_s.^2 - m_sigma.^2 .* (x_s + m_mu).*pdf + ...
                (m_sigma.^2 + m_mu.^2 - x_s^2).*cdf;
+           % The degenerate distribution case
+           %r_s(zeroIdx,:) = m_mu(zeroIdx).^2;
+           % Combine stochastic and deterministic residuals
+           r(obj.uncertainIdx,:) = r_s;
            % Sum all the residuals together
            r = sum(r);
+           % Add the regularizer to the cost
+           r = r + (x' * obj.Reg * x)/2;
 
            %% Calculate the gradient
            if nargout == 2
@@ -185,9 +195,13 @@ classdef GaussianERM < ContactSolver
                % The derivative of the stochastic cost
                df_x = 2.*Dx(obj.uncertainIdx,:) - pdf_common .* pdf - dp_x_common .* dp_x + ...
                    cdf_common .* cdf + dc_x_common .* dc_x;
+               % Degenerate case
+               %df_x(zeroIdx,:) = 2.*m_mu(zeroIdx).*dmu_x(zeroIdx,:);
                % Combine the two costs
                dr(obj.uncertainIdx,:) = df_x;
                dr = sum(dr, 1);
+               % Add the regularizer to the gradient
+               dr = dr + x'*obj.Reg;
            end
        end
    end
@@ -232,6 +246,8 @@ classdef GaussianERM < ContactSolver
                [m_sigma, dsigma_x, dsigma_xx]  = obj.ermDeviation(x, P, w);
                [m_mu, dmu_x, dmu_xx] = obj.ermMean(x, P, w);
            end
+           % Check for degenerate distributions
+           %zeroIdx = (m_sigma == 0);
            % Reshape some of the variables to make the multiplications work
            dsigma_xk = reshape(dsigma_x,size(dsigma_x,1),1,size(dsigma_x,2));
            dmu_xk = reshape(dmu_x,size(dmu_x,1),1,size(dmu_x,2));
@@ -275,9 +291,13 @@ classdef GaussianERM < ContactSolver
            df_xx = 2.*del_nk.*del_nj - pdf_mult_x .* pdf - pdf_common .* dp_xk - ...
                dp_x_mult_x .* dp_x - dp_x_common .* dp_xx + cdf_mult_x .* cdf + cdf_common .* dc_xk + ...
                dc_x_mult_x .* dc_x + dc_x_common .* dc_xx;
+           % Correct for degeneracy
+           %df_xx(zeroIdx,:,:) = 2.*(dmu_xk(zeroIdx,:,:).*dmu_x(zeroIdx,:) + m_mu(zeroIdx).*dmu_xx(zeroIdx,:,:));
            % Combine the partial derivatives together
            dg_xx(obj.uncertainIdx,:,:) = df_xx;
            dg_xx = squeeze(sum(dg_xx, 1));
+           % Add the regularizer
+           dg_xx = dg_xx + obj.Reg;
            %% Mixed partial derivative
            if nargout == 2
                % Deterministic terms
@@ -300,12 +320,14 @@ classdef GaussianERM < ContactSolver
                cdf_mult_y = 2.*(dsigma_y .* dsigma_x + m_sigma.*dsigma_xy + dmu_y .* dmu_x + m_mu.*dmu_xy);
                dc_x_mult_y = 2.*(m_sigma.*dsigma_y + m_mu .* dmu_y);
                % Calculate the mixed partial
-               df_yx = -pdf_mult_y .* pdf - pdf_common .* dp_y - dp_x_mult_y .* dp_x - ...
+               df_xy = -pdf_mult_y .* pdf - pdf_common .* dp_y - dp_x_mult_y .* dp_x - ...
                    dp_x_common .* dp_xy + cdf_mult_y .* cdf + cdf_common.* dc_y + dc_x_mult_y .* dc_x + ...
                    dc_x_common .* dc_xy;
+               % Correct for degeneracy
+               %df_xy(zeroIdx,:,:) = 2.*(dmu_y(zeroIdx,:,:) .* dmu_x(zeroIdx,:) + m_mu(zeroIdx) .* dmu_xy(zeroIdx,:,:));
                % Combine all the partial derivatives together to get the
                % derivatives of the cost
-               dg_xy(obj.uncertainIdx,:,:) = df_yx;
+               dg_xy(obj.uncertainIdx,:,:) = df_xy;
                dg_xy = squeeze(sum(dg_xy, 1));
            end
        end
@@ -360,6 +382,8 @@ classdef GaussianERM < ContactSolver
                [m_mu, dmu_x, dmu_xx] = obj.ermMean(x, P, w);
                [m_sigma, dsigma_x, dsigma_xx] = obj.ermDeviation(x, P, w);
            end
+           % Check for degeneracy
+           zeroIdx = (m_sigma == 0);
            
            % Re-calculate the cost for the stochastic variables
            x_s = x(obj.uncertainIdx,:);
@@ -369,6 +393,9 @@ classdef GaussianERM < ContactSolver
            % Calculate the PDF and CDF values
            pdf = normpdf(x_s, m_mu, m_sigma);
            cdf = normcdf(x_s, m_mu, m_sigma);
+           % Degenerate case
+           pdf(zeroIdx) = 0;
+           cdf(zeroIdx) = 1;
            
            if nargout > 2
                % Calculate the first derivatives
@@ -381,6 +408,10 @@ classdef GaussianERM < ContactSolver
                dp_const = dsigma_x ./m_sigma + tau.*dtau_x;  % Term common in derivatives of pdf
                dp_x = - pdf .* dp_const;
                dc_x = - pdf .* tau_const;
+               
+               % Correct for degeneracy
+               dp_x(zeroIdx,:) = 0;
+               dc_x(zeroIdx,:) = 0;
                
                if nargout > 4
                    
@@ -398,6 +429,9 @@ classdef GaussianERM < ContactSolver
                    % Calculate the second derivatives
                    dp_xx = -dp_x2 .* dp_const - pdf .* (-dsigma_x .* dsigma_xk .* (m_sigma.^-1).^2 + dsigma_xx./m_sigma + dtau_x .* dtau_xk + tau.*dtau_xx);
                    dc_xx = dsigma_xk .* pdf .* dtau_x + m_sigma .* (dp_x2 .* dtau_x + pdf .* dtau_xx);
+                   % Correct for degeneracy
+                   dp_xx(zeroIdx,:,:) = 0;
+                   dc_xx(zeroIdx,:,:) = 0;
                    if nargout > 6
                        % Broadcast some of the variables
                        dsigma_y = reshape(dsigma_y, [size(dsigma_y, 1), 1, size(dsigma_y, 2)]);
@@ -406,11 +440,17 @@ classdef GaussianERM < ContactSolver
                        dtau_y = -(tau .* dsigma_y + dmu_y)./m_sigma;
                        dp_y = -pdf .* (dsigma_y ./ m_sigma + tau.*dtau_y);
                        dc_y = m_sigma .* pdf .* dtau_y;
+                       % Correct for degeneracy
+                       dp_y(zeroIdx,:,:) = 0;
+                       dc_y(zeroIdx,:,:) = 0;
                        % the mixed derivative of TAU
                        dtau_xy = tau_const .* dsigma_y ./ (m_sigma.^2) - (dtau_y .* dsigma_x + tau.*dsigma_xy + dmu_xy)./m_sigma;
                        % The second derivatives of pdf and cdf
                        dp_xy = -dp_y .* dp_const - pdf .* (-dsigma_x .* dsigma_y ./ m_sigma.^2 + dsigma_xy ./m_sigma + dtau_x .* dtau_y + tau.*dtau_xy);
                        dc_xy = dsigma_x .* pdf .* dtau_y + m_sigma .* (dp_y .* dtau_x + pdf .* dtau_xy);
+                       % Correct for degeneracy
+                       dp_xy(zeroIdx,:,:) = 0;
+                       dc_xy(zeroIdx,:,:) = 0;
                        % Squeeze down dp_y and dp_c
                        dp_y = reshape(dp_y, size(dp_y, 1), size(dp_y, 3));
                        dc_y = reshape(dc_y, size(dc_y, 1), size(dc_y, 3));
@@ -451,6 +491,8 @@ classdef GaussianERM < ContactSolver
           % Get the mean and standard deviation for each problem
           [m_mu, dmu_x, ~, dmu_y] = obj.ermMean(x, P, w, dP, dw);
           [m_sigma, dsigma_x, ~, dsigma_y] = obj.ermDeviation(x, P, w, dP, dw);
+          % Check for degeneracy
+          %zeroIdx = (m_sigma == 0);
           % Calculate the ERM residual
           [pdf, cdf, dp_x, dc_x,~, ~, dp_y, dc_y] = obj.evalDistribution(x, P, w, dP, dw);
           
@@ -474,9 +516,13 @@ classdef GaussianERM < ContactSolver
           % The derivative of the stochastic cost
           df_x = 2.*Dx(obj.uncertainIdx,:) - pdf_common .* pdf - dp_x_common .* dp_x + ...
               cdf_common .* cdf + dc_x_common .* dc_x;
+          % Correct for degeneracy
+          %df_x(zeroIdx,:) = 2.*m_mu(zeroIdx).*dmu_x(zeroIdx,:);
           % Combine the two costs
           dg_x(obj.uncertainIdx,:) = df_x;
           dg_x = sum(dg_x, 1);
+          % Add the regularizer
+          dg_x = dg_x + x'*obj.Reg;
           
           % Calculate the derivative wrt the paramters y
           % Derivative of deterministic variables
@@ -488,7 +534,8 @@ classdef GaussianERM < ContactSolver
           p_mult = 2.*m_sigma.*dsigma_y .* (x_s + m_mu) + m_sigma.^2 .* dmu_y;
           c_mult = 2.*(m_sigma.*dsigma_y + m_mu.*dmu_y);
           df_y = - p_mult .* pdf - dp_x_common .* dp_y + c_mult .* cdf + dc_x_common .* dc_y;
-          
+          % Correct for degeneracy
+          %df_y(zeroIdx,:) = 2.*m_mu.*dmu_y;
           % Combine the derivatives
           dg_y(obj.uncertainIdx,:) = df_y;
           dg_y = sum(dg_y, 1);
