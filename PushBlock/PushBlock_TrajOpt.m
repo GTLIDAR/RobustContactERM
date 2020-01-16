@@ -35,7 +35,7 @@ prob = DirtranTrajectoryOptimization(plant, N, Tf);
 % Add a running cost
 prob = prob.addRunningCost(@cost);
 % Add a terminal cost
-prob = prob.addFinalCost(@terminalCost);
+%prob = prob.addFinalCost(@terminalCost);
 % Add the initial and final value constraints
 prob = prob.addStateConstraint(ConstantConstraint(x0),1);
 prob = prob.addStateConstraint(ConstantConstraint(xf),N);

@@ -35,7 +35,11 @@ classdef DifferentiableContactDynamics
             % Run the simulation loop
             for n = 1:nT-1
                dx = obj.dynamics(t(n), x(:,n), u(:,n));
-               x(:,n+1) = x(:,n) + dx * obj.timestep;
+               % Simulate using semi-implicit integration
+               % First integrate the velocity
+               x(obj.numQ+1:end,n+1) = x(obj.numQ+1:end,n) + obj.timestep * dx(obj.numQ+1:end,:);
+               % Now integrate the position
+               x(1:obj.numQ,n+1) = x(1:obj.numQ,n) + x(obj.numQ+1:end,n+1) * obj.timestep;
             end
         end
         function [f, df] = dynamics(obj, t, x, u)
@@ -103,9 +107,8 @@ classdef DifferentiableContactDynamics
             tau = B*u - C*dq - N;
             ddq = R\(R'\(tau + Jc * fc));
             
-            % Time-stepping dynamics (semi-implicit, evaluated at the next time
-            % step)
-            f = [dq + obj.timestep*ddq; ddq];
+            % Dynamics
+            f = [dq; ddq];
             
             if nargout == 2
                 % First calculate the derivatives without the contact force
@@ -134,8 +137,7 @@ classdef DifferentiableContactDynamics
                 % Now add in the gradients of the contact force
                 df2 = df2 + (R\(R'\(Jc * dfc)));
                 % Calculate the gradients of the position
-                df1 = [zeros(obj.numQ), eye(obj.numQ), zeros(obj.numQ, obj.numU)];
-                df1 = df1 + obj.timestep*df2;                
+                df1 = [zeros(obj.numQ), eye(obj.numQ), zeros(obj.numQ, obj.numU)];     
                 % Combine all the gradients into one
                 df = [df1; df2];
                 df = [zeros(2*obj.numQ, 1), df];
