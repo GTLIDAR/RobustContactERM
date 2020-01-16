@@ -49,6 +49,10 @@ classdef UncertainFrictionERM < GaussianERM
             % Record that the friction cone is uncertain
             obj.uncertainIdx = false(2*obj.numN + obj.numT,1);
             obj.uncertainIdx(obj.numN+obj.numT+1:end,:) = true;
+            % Set the regularization of the sliding velocity to be a small value
+            reg = zeros(numel(obj.uncertainIdx),1);
+            reg(obj.uncertainIdx) = 1e-4;
+            obj.Reg = diag(reg);
         end
         function [m_mu, dmu_x, dmu_xx, dmu_y, dmu_xy] = ermMean(obj, x, P, ~, varargin)
             %% ERMMEAN: The mean of the Gaussian Distribution for the ERM problem

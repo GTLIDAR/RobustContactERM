@@ -54,9 +54,9 @@ classdef DifferentiableContactDynamics
             %
             %   DYNAMICS also returns the gradient of the dynamics, df,
             %   with respect to both the state and the controls:
-            %   
+            %
             %       df = [df/dt; df/dx; df/du]
-            %      
+            %
             %   ARGUMENTS:
             %       PLANT:  a DIFFERENTIABLELAGRANGIAN Model
             %       t:      scalar time variable (unused)
@@ -98,65 +98,73 @@ classdef DifferentiableContactDynamics
             % times.
             R = chol(M);
             %Minv = M\eye(obj.numQ);
-                        
+            
             % Calculate the dynamics f
             tau = B*u - C*dq - N;
-            ddq = R\(R'\(tau + (Jc * fc)./obj.timestep));
+            ddq = R\(R'\(tau + Jc * fc));
             
             % Time-stepping dynamics (semi-implicit, evaluated at the next time
             % step)
             f = [dq + obj.timestep*ddq; ddq];
             
             if nargout == 2
-                % Split dfc into parts corresponding to q, dq, and u
-                dfc_q = dfc(:,1:obj.numQ);
-                dfc_dq = dfc(:,obj.numQ+1:2*obj.numQ);
-                dfc_u = dfc(:,2*obj.numQ+1:end);
-                
+                % First calculate the derivatives without the contact force
+                % derivative
                 % Calculate the gradient wrt q
-                dBu = times(dB, reshape(u, [1, numel(u), 1]));
-                dBu = squeeze(sum(dBu,2));
-                dC_dq = times(dC, reshape(dq, [1, obj.numQ, 1]));
-                dC_dq = squeeze(sum(dC_dq, 2));
-                
-                dJc_f = times(dJc, reshape(fc, [1, numel(fc), 1]));
-                dJc_f = squeeze(sum(dJc_f, 2));
-                
+                dBu = squeeze(sum(dB .* u', 2));
+                dC_dq = squeeze(sum(dC .* dq', 2));
+                dJc_f = squeeze(sum(dJc .* fc', 2));               
                 % Gradient of tau wrt q
-                dtau_q = dBu - dC_dq(:,1:obj.numQ) - dN;                         
-                
+                dtau_q = dBu - dC_dq(:,1:obj.numQ) - dN;
                 % Gradient of tau wrt dq
                 dtau_dq = - (dC_dq(:,obj.numQ+1:end) + C);
-                
                 % Gradient of the inverse mass matrix
                 dMinv = zeros(size(dM));
                 for n = 1:obj.numQ
                     dMinv(:,:,n) = -R\(R'\dM(:,:,n)/R)/R';
                 end
-                % Multiply by tau
-                dMinv_tau = times(dMinv, reshape(tau, [1, obj.numQ, 1]));
-                dMinv_tau = squeeze(sum(dMinv_tau, 2));            
-                % Multiply by fc
-                dMinv_fc = times(dMinv, reshape(Jc*fc, [1, obj.numQ, 1]));
-                dMinv_fc = squeeze(sum(dMinv_fc,2));
-                        
-                % Calculate the partial derivatives
-                df2_q = dMinv_tau + R\(R'\dtau_q) + (dMinv_fc + (R\(R'\(dJc_f + Jc*dfc_q))))/ obj.timestep;
-                
-                df2_dq =  R\(R'\(dtau_dq + Jc*dfc_dq/obj.timestep));
-                
-                df2_u = R\(R'\(B + (Jc * dfc_u)./obj.timestep));
-                
-                df_q = [obj.timestep * df2_q; df2_q];
-                df_dq = [eye(obj.numQ) + obj.timestep * df2_dq; df2_dq];
-                df_u = [obj.timestep * df2_u; df2_u];
-                                
+                % Multiply by tau and contact force
+                dMinv_tau_f = squeeze(sum(dMinv .* (tau + Jc*fc)', 2));
+                % Calculate the gradients with fixed contact force
+                df2_q = dMinv_tau_f + (R\(R'\(dtau_q + dJc_f)));
+                df2_dq = R\(R'\dtau_dq);
+                df2_u = R\(R'\B);
+                % Combine the individual gradients into one
+                df2 = [df2_q, df2_dq, df2_u];
+                % Now add in the gradients of the contact force
+                df2 = df2 + (R\(R'\(Jc * dfc)));
+                % Calculate the gradients of the position
+                df1 = [zeros(obj.numQ), eye(obj.numQ), zeros(obj.numQ, obj.numU)];
+                df1 = df1 + obj.timestep*df2;                
                 % Combine all the gradients into one
-                df = [zeros(2*obj.numQ, 1), df_q, df_dq, df_u];
+                df = [df1; df2];
+                df = [zeros(2*obj.numQ, 1), df];
             end
         end 
         function [f,df,r] = contactForce(obj,q, dq,u)
-
+            %% CONTACTFORCE: Solves for the contact force at the given state
+            %
+            %   CONTACTFORCE solves for the contact force, given the state
+            %   and the controls. Optionally, contactForce also returns the
+            %   gradient of the force and the residual from the contact
+            %   solver.
+            %
+            %   Syntax:
+            %       [f, df, r] = contactForce(obj, q, dq, u);
+            %       [f, df, r] = obj.contactForce(q, dq, u);
+            %
+            %   Arguments:
+            %       OBJ: A DifferentiableContactDynamics model
+            %       q:   Nx1 double, the configuration of the system
+            %       dq:  Nx1 double, the configuration rate of the system
+            %       u:   Mx1 double, the controls on the system
+            %
+            %   Return Values:
+            %       f:  Kx1 double, the contact forces
+            %       df: Kx(2N+M) double, the gradient of the contact force
+            %           with respect to (q, dq, u)
+            %       r:  scalar double, the residual from the contact solver
+            
             % Get the parameters of the LCP problem
             [P, z, dP, dz, numF] = obj.getLCP(q, dq, u);
             % Solve the LCP
@@ -171,6 +179,9 @@ classdef DifferentiableContactDynamics
             end
             % Get the normal and tangential forces
             f = f(1:numF,:);
+            % Convert impulse into force
+            f = f./obj.timestep;
+            df = df./obj.timestep;
         end
 
         function [P, z, dP, dz, numF] = getLCP(obj, q, dq, u)
@@ -225,30 +236,22 @@ classdef DifferentiableContactDynamics
             diM = zeros(obj.numQ*[1, 1, 1]);
             dP = zeros(numT+2*numN, numT+2*numN, 2*obj.numQ + obj.numU);
             for n = 1:obj.numQ
-                diM(:,:,n) = -R\(R'\dM(:,:,n)/R)/R';
+                diM(:,:,n) = -((R\(R'\dM(:,:,n)))/R)/R';
                 dP(1:numN + numT, 1:numN + numT,n) = dJc(:,:,n) * (R\Jr') + Jc * diM(:,:,n) * Jc' + (Jr/R') * dJc(:,:,n)';
             end
             % Gradient of P wrt dq
             dP(:,:,obj.numQ+1:2*obj.numQ) = obj.timestep * dP(:,:,1:obj.numQ);
             % Calculate the gradient of the offset vector, z:
             % First we do some multidimensional array multiplication:
-            dC = times(dC,reshape(dq, [1, obj.numQ, 1]));
-            dC = squeeze(sum(dC,2));
-            
-            dBu = times(dB, reshape(u, [1, obj.numU, 1]));
-            dBu = squeeze(sum(dBu, 2));
-            
+            dC = squeeze(sum(dC.*dq', 2));
+            dBu = squeeze(sum(dB.*u', 2));            
             % Gradients of TAU wrt q, dq
             dtau_q = dBu - dC(:,1:obj.numQ) - dN;
             dtau_dq = -(dC(:,obj.numQ+1:end) + C) + obj.timestep*dtau_q;
             
             % Tensor Multiplications
-            diM_tau = times(diM, reshape(tau, [1, obj.numQ, 1]));
-            diM_tau = squeeze(sum(diM_tau, 2));
-
-            dJc_v = times(dJc, reshape(vel, [1, numel(vel), 1]));
-            dJc_v = squeeze(sum(dJc_v, 2));
-            
+            diM_tau = squeeze(sum(diM .* tau', 2));
+            dJc_v = squeeze(sum(dJc .* vel', 2));           
             % Common terms to dz_q, dz_dq
             dz_common = dJc_v + obj.timestep * Jc * diM_tau;
             
@@ -257,7 +260,6 @@ classdef DifferentiableContactDynamics
             dz_q(1:numN,:) = dz_q(1:numN,:) + Jn ./ obj.timestep;
             dz_dq = obj.timestep * dz_common + Jc * (eye(obj.numQ) + obj.timestep * (R\(R'\dtau_dq)));
             dz_u = obj.timestep * (Jr/R') * B;
-            
             
             % Collect all the gradients in one
             dz = zeros(numT + 2*numN, 2*obj.numQ + obj.numU);

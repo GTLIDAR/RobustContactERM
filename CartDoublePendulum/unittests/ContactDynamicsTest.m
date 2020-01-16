@@ -259,10 +259,10 @@ classdef ContactDynamicsTest < matlab.unittest.TestCase
                 dq = zeros(N,1);
                 dq(n) = 0.5*obj.h;
                 % Use a finite central difference
-                f1 = fun(q + dq);
-                f2 = fun(q - dq);
+                f1 = fun(q + dq)./obj.h;
+                f2 = fun(q - dq)./obj.h;
                 % Estimate the gradient
-                df{n} = (f1 - f2)./obj.h;
+                df{n} = f1 - f2;
             end
         end
     end

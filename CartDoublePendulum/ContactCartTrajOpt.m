@@ -13,7 +13,7 @@ cd(here);
 addpath(genpath('PATH_LCP'));
 
 % Load the kinematic solution
-x = load('ContactCart_KinematicSequence.mat');
+x = load('KinematicWarmStart/ContactCart_KinematicSequence.mat');
 x_init = x.x;
 
 name = 'ContactCart_LCP_TrajOpt';
@@ -24,8 +24,8 @@ plant.timestep = dt;
 plant.cartHeight = 1.5;
 
 % Specify the initial and final conditions
-x0 = [0,0];     % initial condition in cartesian coordinates
-xf = [10,0];    % final condition in cartesian coordinates
+x0 = [0 ,0];     % initial condition in cartesian coordinates
+xf = [10,0];     % final condition in cartesian coordinates
 % Calculate initial and final states
 q0 = plant.inverseKinematics(x0);
 qF = plant.inverseKinematics(xf);
@@ -33,18 +33,20 @@ qF = plant.inverseKinematics(xf);
 x0 = [q0;zeros(3,1)];
 xf = [qF; zeros(3,1)];
 
-% Specify the number of collocation points
-N = 101;
+% Specify the final time of the problem (seconds)
+Tf = 1;    
 
-% Specify the final time of the problem
-Tf = 5;     % Five seconds for this problem
+% Calculate the number of collocation points, given the discretization
+% timestep
+t_init = 0:plant.timestep:Tf;
+N = numel(t_init);
 
 % Create a Trajectory Optimization Problem 
 % Note that contact is implicit in the dynamics
 prob = DirtranTrajectoryOptimization(plant, N, Tf);
 
 % Add a running cost
-prob = prob.addRunningCost(@cost);
+%prob = prob.addRunningCost(@cost);
 % Add a terminal cost
 %prob = prob.addFinalCost(@(t, x) terminalCost2(t, x, xf));
 % Add the initial and final value constraints
@@ -53,20 +55,20 @@ prob = prob.addStateConstraint(ConstantConstraint(xf),N);
 
 % Set the options for the solver
 prob = prob.setSolver('snopt');
-prob = prob.setSolverOptions('snopt','MajorFeasibilityTolerance',1e-3);
+prob = prob.setSolverOptions('snopt','MajorFeasibilityTolerance',1e-6);
 prob = prob.setSolverOptions('snopt','MajorOptimalityTolerance',1e-3);
-prob = prob.setSolverOptions('snopt','ScaleOption',1);
+prob = prob.setSolverOptions('snopt','ScaleOption',2);
 prob = prob.setSolverOptions('snopt','IterationsLimit',20000);
 % Create the initial guess at the solution
-t_init = linspace(0, Tf, N);
 traj_init.x = PPTrajectory(foh(t_init,x_init));
 % Solve the problem
 disp("Running Trajectory Optimization");
+pause(0.5);
 tic;
 [xtraj, utraj, z, F, info] = prob.solveTraj(t_init, traj_init);
 toc
 
-save(name,'xtraj','utraj','z','F','info');
+save(name,'xtraj','utraj','z','F','info','plant','traj_init');
 
 % Notes on the output of prob.solveTraj:
 %   Return values:

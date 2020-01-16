@@ -14,6 +14,12 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
     %   To be compatible with Drake, ContactDrivenCart subclasses the
     %   Manipulator class, and implements the manipulatorDynamics method.
     
+    %   For a ContactDrivenCart, the configuration q consists of the
+    %   horizontal position of the cart, q(1), the angle of the first link
+    %   relative to vertical down, q(2), and the angle of the second link
+    %   relative to the first link, q(3). This pattern is used throughout
+    %   the implementation, and an identical pattern is used for the joint
+    %   rates, dq.
     
     %   Luke Drnach
     %   November 19, 2019
@@ -28,58 +34,125 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
         lengths = [1,1];
         inertias = [1,1];
         com = [0.5, 0.5];
-        % Terrain
-        %terrain = FlatTerrain();
+        % Configuration and Control space dimensions
         numQ = 3;
         numU = 2;
-        % Visualization methods
+        % Parameters for the visualization methods
         cart_height = 1;
         cart_width = 1;
     end
-    
+   %% ------ Constructor and Required Methods for Manipulator ------ %% 
     methods
         function obj = ContactDrivenCart()
+            %% ContactDrivenCart: Class Constructor
+            %
+            %   ContactDrivenCart creates a new instance of the
+            %   ContactDrivenCart class, and returns it in OBJ
+            %
+            %   Syntax:
+            %       obj = ContactDrivenCart();
+            %
+            %   Arguments:
+            %       None
+            %   Return Values:
+            %       OBJ: An instance of the ContactDrivenCart class
+            %
+            %   ContactDrivenCart is a subclass of the Drake Class
+            %   Manipulator. When subclassing Manipulator, we must provide
+            %   the number of configuration variables nQ and the number of
+            %   controls nU to the constructor for Manipulator. To modify
+            %   the existing code to work without Drake, simply take out
+            %   the lines referring to the Manipulator Class.
             
-            % When we subclass Manipulator, we must provide
-            % the number of configuration variables nQ and the 
-            % number of controls nU
+            % Create a Manipulator
             nQ = 3;
             nU = 2;
             obj = obj@Manipulator(nQ, nU);
-            % We can optionally set input limits for the acrobot
+            % Optionally set control limits (uncomment to include control
+            % limits)
 %             obj = setInputLimits(obj,-15,15);
         end 
-        function [H,C,B, dH, dC, dB] = manipulatorDynamics(obj,q,dq)
+        function [H, C, B, dH, dC, dB] = manipulatorDynamics(obj,q,dq)
+            %% MANIPULATORDYNAMICS: Returns parameters for calculating the system dynamics
+            %
+            %   manipulatorDynamics calculates and returns the mass matrix,
+            %   force effects, and input selection matrix, and their
+            %   derivatives, for use in calculating the system dynamics.
+            %   manipulatorDynamics is a required method for subclasses of
+            %   Drake's Manipulator class.
+            %
+            %   Syntax:
+            %       [H,C,B,dH,dC,dB] = manipulatorDynamics(obj, q, dq);
+            %       [H,C,B,dH,dC,dB] = obj.manipulatorDynamics(q,dq);
+            %
+            %   Arguments:
+            %       OBJ: A ContactDrivenCart object
+            %       q:   3x1 double, the configuration vector
+            %       dq:  3x1 double, the configuration rate vector
+            %
+            %   Return Values:
+            %       H:  3x3 double, the mass matrix evaluated at q
+            %       dH: 3x9 double, the derivatives of the mass matrix with
+            %           respect to q
+            %       C:  3x1 double, a vector of force effects evaluated at
+            %           q
+            %       dC: 3x6 double, the derivatives of C wrt q and dq
+            %       B:  3x2 double, the control selection matrix
+            %       dB: 3x6 double, the derivatives of B wrt q
+            %
+            %   Note: for dH, every three columns is a derivative wrt a 
+            %   different element in q. i.e. dH(:,1:3) is the derivative 
+            %   wrt q(1), dH(:,4:6) is the derivative wrt q(2). Likewise, 
+            %   every 2 columns of dB is a derivative wrt each q.
             
+            % Get the system parameters
             [H, dH] = obj.massMatrix(q);
             [C, dC] = obj.coriolisMatrix(q,dq);
             [N, dN] = obj.gravityMatrix(q);
             [B, dB] = obj.controllerMatrix(q);
-            
-            % Gradient wrt q
+            % Calculate the gradient of C (coriolis matrix) wrt q
             dC_q = times(dC(:,:,1:obj.numQ), reshape(dq,1,obj.numQ,1));
             dC_q = squeeze(sum(dC_q, 2));
-            
+            % Gradient of force effects wrt q
             dC_q = dC_q + dN;
-            % Gradient wrt dq
+            % Calculate the gradient of the Coriolis effects wrt dq
             dC_dq = times(dC(:,:,obj.numQ+1:end), reshape(dq, 1, obj.numQ, 1));
             dC_dq = squeeze(sum(dC_dq, 2));
-            dC_dq = dC_dq + C;
-            
-            % Gradient of C*q + N
+            dC_dq = dC_dq + C; 
+            % Gradient of all force effects wrt q and dq
             dC = [dC_q, dC_dq]';
-            
             % Combine the coriolis and gravitational effects
             C = C*dq + N;
-            
             % Reshape dM and dB
             dH = reshape(dH, [size(dH, 1), size(dH,2) * size(dH, 3)])';
             dB = reshape(dB, [size(dB, 1), size(dB, 2) * size(dB, 3)])';
         end
     end
-   
+   %% ------ Methods defining the dynamic properties  -------------- %%
     methods 
         function [M,dM] = massMatrix(obj, q)
+            %% MassMatrix: Calculates the system Mass Matrix
+            %
+            %   massMatrix calculates the mass matrix of the system, and
+            %   the derivative of the mass matrix wrt the configuration, at
+            %   a given configuration q.
+            %
+            %   Syntax:
+            %       [M, dM] = massMatrix(obj, q);
+            %       [M, dM] = obj.massMatrix(q);
+            %
+            %   Arguments:
+            %       OBJ: A ContactDrivenCart object
+            %       q:   3x1 double, the configuration vector
+            %       
+            %   Return Values
+            %       M:  3x3 double, the mass matrix
+            %       dM: 3x3x3 double, the derivatives of the mass matrix
+            %           wrt the configuration, q. Note that dM(:,:,k) is
+            %           the derivative of M wrt q(k).
+            
+            % Initialize the mass matrix array
+            M = zeros(3);
             % Calculate some mass-geometric constants
             mT = sum(obj.masses) + obj.blockMass;
             g1 = obj.lengths(1)*(obj.masses(2) + obj.com(1)*obj.masses(1));
@@ -87,18 +160,14 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             g3 = obj.masses(2)*(obj.com(2)*obj.lengths(2))^2;
             g4 = obj.com(2)*obj.lengths(2)*obj.lengths(1)*obj.masses(2);
             g5 = (obj.masses(1)*obj.com(1)^2 + obj.masses(2))*obj.lengths(1)^2;
-            
             % Calculate the diagonals of the mass matrix
             dM = [mT;
                 g5 + obj.inertias(1) + g3 + 2*g4*cos(q(3));
                 obj.inertias(2) + g3];
             % Calculate the upper triangle of the mass matrix
-            M = zeros(3);
-            
             M(1,3) = g2*cos(q(2) + q(3));
             M(1,2) = g1*cos(q(2)) + M(1,3);            
             M(2,3) = obj.inertias(2) + g3 + g4*cos(q(3));
-            
             % Use symmetry to fill in the remaining elements and fill in the
             % diagonals
             M = M + M' + diag(dM);
@@ -107,7 +176,6 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             if nargout == 2
                dM = zeros(3,3,3);
                % Gradient with respect to block position is 0
-               
                % Gradient with respect to the first joint
                dM(1,3,2) = - g2 * sin(q(2) + q(3));
                dM(1,2,2) = - g1 * sin(q(2)) + dM(1,3,2);
@@ -120,53 +188,100 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
                         
         end
         function [C, dC] = coriolisMatrix(obj, q, dq)
-            C = zeros(3);
+            %% CoriolisMatrix: Matrix of Coriolis and Centripetal effects
+            %
+            %   coriolisMatrix returns the matrix of Coriolis and
+            %   centripetal effects for the system. The Coriolis effects
+            %   are those effects in which products of dissimilar
+            %   velocities appear, while the centripetal effects are those
+            %   force effects for which a product of similar velocities (a
+            %   velocity squared) appears.
+            %
+            %   The vector of Coriolis and centripetal force effects can be
+            %   calculated by multiplying the matrix by the joint rates:
+            %   C*dq
+            %
+            %   Syntax:
+            %       [C, dC] = coriolisMatrix(obj, q, dq);
+            %       [C, dC] = obj.coriolisMatrix(q, dq);
+            %
+            %   Arguments:
+            %       Obj:    a ContactDrivenCart object
+            %       q:      3x1 double, the configuration vector
+            %       dq:     3x1 double, the configuration rate vector
+            %
+            %   Return Values:
+            %       C:      3x3 double, the Coriolis matrix
+            %       dC:     3x3x6 double, the derivatives of the Coriolis
+            %               matrix wrt q and dq. The first three pages are
+            %               the derivatives wrt q; the last three pages are
+            %               the derivatives wrt dq.
             
+            % Initialize the coriolis matrix
+            C = zeros(3);
             % Pre-calculate some geometric constants
             c1 = obj.com(2)*obj.masses(2)*obj.lengths(2);
             c2 = c1 * obj.lengths(1);
             c3 = (obj.masses(2) + obj.com(1)*obj.masses(1))*obj.lengths(1);
-            
             % Fill in the nonzero components of the Coriolis Matrix
             C(1,3) = - c1 * sin(q(2) + q(3)) * (dq(2) + dq(3));
             C(1,2) = - c3 * dq(2) * sin(q(2)) + C(1,3);
             C(2,2) = - c2 * sin(q(3)) * dq(3);
             C(2,3) = - c2 * sin(q(3)) * (dq(2) + dq(3));
             C(3,2) =   c2 * sin(q(3)) * dq(2);
-            
             % Gradient tensor of the Coriolis effects
             if nargout == 2
                 dC = zeros(3,3,6);
-                
+                % Note that the derivatives wrt to the cart position q(1)
+                % and the cart velocity dq(1) are all 0.
+                % Derivative wrt q(2), the first link angle
                 dC(1,3,2) = - c1 * cos(q(2) + q(3)) *(dq(2)+dq(3));
                 dC(1,2,2) = -c3 * cos(q(2))*dq(2) +dC(1,3,2);
-                
+                % Derivative wrt q(3), the second link angle
                 dC(1,2:3,3) = dC(1,3,2);
                 dC(2,2,3) = -c2 * cos(q(3)) * dq(3);
                 dC(2,3,3) = - c2 * cos(q(3)) * (dq(2) + dq(3));
                 dC(3,2,3) = c2 * cos(q(3)) * dq(2);
-                
+                % Derivative wrt dq(2), the first link angular velocity
                 dC(1,3,5) = -c1 * sin(q(2) + q(3));
                 dC(1,2,5) = -c3 * sin(q(2)) + dC(1,3,5);
                 dC(2,3,5) = -c2 * sin(q(3));
                 dC(3,2,5) = - dC(2,3,5);
-                
+                % Derivative wrt dq(3), the second link angular velocity
                 dC(1,2:3,6) = -c1 * sin(q(2) + q(3));
                 dC(2,2:3,6) = -c2 * sin(q(3));
-                
             end
-        end
-        
+        end  
         function [N,dN] = gravityMatrix(obj,q)
-            % Returns gravity and conservative forces for the Pendulum Driven
-            % Cart
+            %% GravityMatrix: Vector of Conservative Force Effects
+            %
+            %   gravityMatrix returns the vector of conservative (mostly
+            %   gravitational) force effects for the system, and optionally
+            %   the derivatives of the force effects wrt the configuration
+            %   q.
+            %
+            %   Syntax:
+            %       [N, dN] = gravityMatrix(obj, q);
+            %       [N, dN] = obj.gravityMatrix(q);
+            %
+            %   Arguments:
+            %       OBJ:    A ContactDrivenCart object
+            %       q:      3x1 double, the configuration vector
+            %       
+            %   Return Values:
+            %       N:      3x1 double, the conservative force effects
+            %       dN:     3x3 double, the derivatives of N wrt q
+
+            % Initialize the force effects vector
+            N = zeros(3,1);
+            % Calculate some geometric constants
             g1 = obj.com(2)*obj.masses(2)*obj.lengths(2);
             g2 = (obj.com(1)*obj.masses(1) + obj.masses(2))*obj.lengths(1);
-            
-            N = zeros(3,1);
+            % Fill in the values for the force effects
             N(3) = g1*sin(q(2)+q(3));
             N(2) = g2*sin(q(2)) + N(3);
             N = N * 9.81;
+            
             % Gradient matrix of the conservative forces
             if nargout == 2
                dN = zeros(3, 3); 
@@ -178,19 +293,58 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             end
         end
         function [B,dB] = controllerMatrix(obj,~)
-           B = [0, 0;
+            %%  ControllerMatrix: The control selection matrix
+            %
+            %   controllerMatrix returns the control selection matrix for
+            %   the system. Optionally, controllerMatrix also returns the
+            %   derivatives of the control selection matrix wrt the
+            %   configuration.
+            %
+            %   Syntax:
+            %       [B, dB] = controllerMatrix(obj, q);
+            %       [B, dB] = obj.controllerMatrix(q);
+            %
+            %   Arguments:
+            %       OBJ:    a ContactDrivenCart object
+            %       q:      3x1 double, the configuration vector
+            %
+            %   Return Values:
+            %       B:      3x2 double, the controller selection matrix
+            %       dB:     3x2x3 double, the derivatives of the controller
+            %               selection matrix wrt the configuration vector q
+            
+            % The controller selection matrix
+            B = [0, 0;
                 1, 0;
                 0, 1];
-           if nargout == 2
-              dB = zeros(3,2,3); 
-           end
+            % The derivatives of the selection matrix
+            if nargout == 2
+                dB = zeros(3,2,3);
+            end
         end
         function [J, dJ] = jacobian(obj, q)
-            % Returns the endpoint Jacobian for the system
-            % The endpoint Jacobian relates the generalized velocities to the
-            % Cartesian coordinate velocities of the end of the second pendulum
+            %%  Jacobian: The Jacobian matrix for the end of the double pendulum
+            %
+            %   JACOBIAN returns the Jacobian matrix (the matrix of partial
+            %   derivatives) for the end of the second pendulum in the
+            %   ContactDrivenCart, evaluated at the current configuration.
+            %
+            %   Syntax:
+            %       [J, dJ] = jacobian(obj, q);
+            %       [J, dJ] = obj.jacobian(q);
+            %
+            %   Arguments:
+            %       OBJ:    a ContactDrivenCart object
+            %       q:      3x1 double, the configuration vector
+            %
+            %   Return Values:
+            %       J:      2x3 double, the Jacobian matrix
+            %       dB:     2x3x3 double, the derivatives of the Jacobian
+            %               matrix wrt the configuration q
             
+            % Initialize the Jacobian
             J = zeros(2,3);
+            % Fill in the nonzero values
             J(1,1) = 1;
             J(1,3) = obj.lengths(2)*cos(q(2)+q(3));
             J(2,3) = obj.lengths(2)*sin(q(2)+q(3));
@@ -202,11 +356,79 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
                 dJ = zeros(2,3,3);
                 dJ(:,:,3) = [0, -obj.lengths(2) * sin(q(2) + q(3)) * [1 ,1];
                              0,  obj.lengths(2) * cos(q(2) + q(3)) * [1,1]];
-                         
                 dJ(:,:,2) = [0, -obj.lengths(1) * sin(q(2)), 0;
                              0,  obj.lengths(1) * cos(q(2)), 0];
                 dJ(:,:,2) = dJ(:,:,2) + dJ(:,:,3);
             end
+        end
+    end
+    %% ------   Other Methods ------ %%
+    methods
+        function CoM = centerOfMass(obj, q)
+            %% CENTEROFMASS: Returns the center of mass of the system 
+            %
+            %   centerOfMass calculates the center of mass for the entire
+            %   ContactDrivenCart and returns it in an [x,y] pair. The
+            %   center of mass is calculated for a given configuration.
+            %
+            %   Syntax:
+            %       CoM = centerOfMass(obj, q);
+            %       CoM = obj.centerOfMass(q);
+            %
+            %   Arguments:
+            %       Obj:    a ContactDrivenCart object
+            %       q:      3x1 double, the configuration vector
+            %
+            %    Return values:
+            %        CoM:   2x1 double, the center of mass coordinates. The
+            %               first value is the horizontal coordinate, the 
+            %               second is the vertical coordinate.
+            
+            % Calculate the positions of the centers of mass for each body
+            % in the system
+            % For the cart:
+            cart = [q(1), obj.cartHeight];
+            % For the first link:
+            link1 = [q(1) + obj.lengths(1)*obj.com(1)*sin(q(2)), obj.cartHeight - obj.lengths(1)*obj.com(1)*cos(q(2))];
+            % For the second link:
+            link2 = [q(1) + obj.lengths(1)*sin(q(2)) + obj.lengths(2)*obj.com(2)*sin(q(2)+q(3)), ...
+                obj.cartHeight - obj.lengths(1)*cos(q(2)) - obj.lengths(2)*obj.com(2)*sin(q(2)+q(3))];
+            % Take the weighted average to get the center of mass
+            CoM = cart * obj.blockMass + link1 * obj.masses(1) + link2 * obj.masses(2);
+            CoM = CoM ./(obj.blockMass + obj.masses(1) + obj.masses(2));
+        end
+        
+        function [E, T, V] = energy(obj, q, dq)
+           %% ENERGY: The total mechanical energy of the system
+           %
+           %    ENERGY calculates the total energy, the kinetic energy, and
+           %    the potential energy of the system at a given state
+           %    (configuration and rate pair)
+           %
+           %    Syntax:
+           %        [E, T, V] = energy(obj, q, dq);
+           %        [E, T, V] = obj.energy(q, dq);
+           %
+           %   Arguments:
+           %       Obj:    a ContactDrivenCart object
+           %       q:      3x1 double, the configuration vector
+           %       dq:     3x1 double, the configuration rate vector
+           %
+           %    Return values:
+           %        E:      scalar double, the total mechanical energy
+           %        T:      scalar double, the kinetic energy
+           %        V:      scalar double, the potential energy
+           
+           % Calculate the kinetic energy
+           M = obj.massMatrix(q);
+           T = dq'*M*dq / 2;
+           % Calculate the potential energy
+           V_b = obj.blockMass * obj.cartHeight * 9.81;
+           V1 = (obj.cartHeight - obj.com(1) * obj.lengths(1) * cos(q(2))) * obj.masses(1) * 9.81;
+           V2 = (obj.cartHeight - obj.lengths(1) * cos(q(2)) - obj.lengths(2) * obj.com(2) * cos(q(2)+q(3))) * obj.masses(2) * 9.81;
+           V = V_b + V1 + V2;
+           % Total energy
+           E = T + V;
         end
         function x = kinematics(obj, q)
             

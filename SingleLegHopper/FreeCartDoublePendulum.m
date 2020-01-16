@@ -61,7 +61,7 @@ methods
        x(3) = x(2) + self.lengths(2) * sin(q(3) + q(4)); 
        y(3) = y(2) - self.lengths(2) * cos(q(3) + q(4)); 
     end
-    function J = jacobian(self, q)
+    function [J, dJ] = jacobian(self, q)
        % Returns the endpoint Jacobian for the system
        % The endpoint Jacobian relates the generalized velocities to the
        % Cartesian coordinate velocities of the end of the second pendulum
@@ -72,9 +72,18 @@ methods
        J(2,4) = self.lengths(2)*sin(q(3)+q(4));
        J(1,3) = self.lengths(1)*cos(q(3)) + J(1,4);
        J(2,3) = self.lengths(1)*sin(q(3)) + J(2,4);
+       
+       if nargout == 2
+          % The derivative of the Jacobian wrt each of the configuration
+          % variables
+          dJ = zeros(2,4,4);
+          dJ(1,3:4,3) = -J(2,3:4);
+          dJ(2,3:4,3) = J(1,3:4);
+          dJ(:,4,4) = dJ(:,4,3);
+       end
     end
     %% ---------------- DYNAMIC PROPERTIES --------------------- %%
-    function M = inertiaMatrix(self, q)
+    function [M, dM] = inertiaMatrix(self, q)
         
         % Calculate some geometric constants
         mT = sum(self.masses) + self.blockMass;
@@ -85,7 +94,7 @@ methods
         g5 = (self.masses(1)*self.com(1)^2 + self.masses(2))*self.lengths(1)^2;
 
         % Calculate the diagonals of the mass matrix
-        dM = [mT;
+        diagM = [mT;
               mT;
               g5 + self.inertias(1) + g3 + 2*g4*cos(q(4));
               self.inertias(2) + g3];
@@ -102,38 +111,82 @@ methods
         
         % Use symmetry to fill in the remaining elements and fill in the
         % diagonals
-        M = M + M' + diag(dM);
+        M = M + M' + diag(diagM);
+        
+        % The derivatives of the mass matrix wrt the configuration
+        % variables
+        if nargout == 2
+            dM = zeros(4,4,4);
+            dM(1,3:4,3) = -M(2,3:4);
+            dM(2,3:4,3) =  M(1,3:4);
+            dM(1,3:4,4) = -M(2,4);
+            dM(2,3:4,4) =  M(1,4);
+            dM(3,3:4,4) = [-2,-1]*g4*sin(q(4));
+        end
     end
-    function C = coriolisMatrix(self, q, qdot)
+    function [C, dC] = coriolisMatrix(self, q, qdot)
         C = zeros(4);
         
         % Pre-calculate some geometric constants
-        c1 = self.com(2)*self.masses(2)*self.lengths(2);
-        c2 = c1 * self.lengths(1);
-        c3 = (self.masses(2) + self.com(1)*self.masses(1))*self.lengths(1);
+        g1 = self.lengths(1)*(self.masses(2) + self.com(1)*self.masses(1));
+        g2 = self.com(2)*self.lengths(2)*self.masses(2);
+        g4 = self.com(2)*self.lengths(2)*self.lengths(1)*self.masses(2);
         
         % Fill in the nonzero components of the Coriolis Matrix
-        C(1,4) = - c1 * sin(q(3) + q(4)) * (qdot(3) + qdot(4));
-        C(2,4) =   c1 * cos(q(3) + q(4)) * (qdot(3) + qdot(4));
-        C(1,3) = - c3 * qdot(3) * sin(q(3)) + C(1,4); 
-        C(2,3) =   c3 * qdot(3) * cos(q(3)) + C(2,4);
-        C(3,3) = - c2 * sin(q(4)) * qdot(4);
-        C(3,4) = - c2 * sin(q(4)) * (qdot(3) + qdot(4));
-        C(4,3) =   c2 * sin(q(4)) * qdot(3);
+        C(1,4) = - g2 * sin(q(3) + q(4)) * (qdot(3) + qdot(4));
+        C(2,4) =   c2 * cos(q(3) + q(4)) * (qdot(3) + qdot(4));
+        C(1,3) = - g1 * qdot(3) * sin(q(3)) + C(1,4); 
+        C(2,3) =   g1 * qdot(3) * cos(q(3)) + C(2,4);
+        C(3,3) = - g4 * sin(q(4)) * qdot(4);
+        C(3,4) = - g4 * sin(q(4)) * (qdot(3) + qdot(4));
+        C(4,3) =   g4 * sin(q(4)) * qdot(3);
         
+        if nargout == 2
+           dC = zeros(4,4,8); 
+           % Deriv wrt theta_1 (q(3))
+           dC(1,:,3) = -C(2,:);
+           dC(2,:,3) = C(1,:);
+           % Deriv wrt theta_2 (q(4))
+           dC(1,3:4,4) = -C(2,4);
+           dC(2,3:4,4) = C(1,4);
+           dC(3,3:4,4) = -g4*cos(q(4))*[qdot(4), qdot(3)+qdot(4)];
+           dC(4,3,4) = g4*cos(q(4))*qdot(3);
+           % Deriv wrt theta_2_dot (dq(4))
+           dC(1,3:4,8) = -g2 * sin(q(3)+q(4));
+           dC(2,3:4,8) = g2 * cos(q(3) + q(4));
+           dC(3,3:4,8) = -g4*sin(q(4));
+           % Deriv wrt theta_1_dot (dq(3))
+           dC(1:3,4,7) = dC(1:3,4,8);
+           dC(1:2,3,7) = dC(1:2,3,8) + g1 *[-sin(q(3)); cos(q(3))];
+           dC(4,3,7) = -dC(3,3,8);
+        end
     end
-    function N = gravityMatrix(self, q)
+    function [N, dN] = gravityMatrix(self, q)
         % Returns gravity and conservative forces for the Pendulum Driven
         % Cart
+        g1 = self.lengths(1)*(self.masses(2) + self.com(1)*self.masses(1));
+        g2 = self.com(2)*self.lengths(2)*self.masses(2);
+        
         N = zeros(4,1);
         N(2) = sum(self.masses) + self.blockMass;
-        N(4) = self.com(2)*self.masses(2)*self.lengths(2)*sin(q(3)+q(4)); 
-        N(3) = (self.com(1)*self.masses(1) + self.masses(2))*self.lengths(1)*sin(q(3)) + N(4);
+        N(4) = g2*sin(q(3)+q(4)); 
+        N(3) = g1*sin(q(3)) + N(4);
         
         N = N * 9.81;
+        
+        if nargout == 2
+           dN = zeros(4,4); 
+           dN(3:4,3:4) = g2*cos(q(3)+q(4));
+           dN(3,3) = dN(3,3) + g1*cos(q(3));
+           dN = dN * 9.81;
+        end
     end
-    function B = inputMatrix(~,~)
+    function [B, dB] = inputMatrix(~,~)
        B = eye(4); 
+       
+       if nargout == 2
+           dB = zeros(4,4,4);
+       end
     end
     %% ---------------- CONTACT PARAMETERS --------------------- %%
     function [n, alpha] = contactNormal(self,q)
@@ -182,7 +235,4 @@ methods
         end
     end
 end
-    methods (Static, Access = private, Hidden)
-        
-    end
 end

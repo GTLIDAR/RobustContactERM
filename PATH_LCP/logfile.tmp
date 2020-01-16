@@ -9,49 +9,48 @@ Written by Todd Munson, Steven Dirkse, and Michael Ferris
 
 INITIAL POINT STATISTICS
 Maximum of X. . . . . . . . . .  0.0000e+00 var: (x[    1])
-Maximum of F. . . . . . . . . .  3.4295e+01 eqn: (f[    1])
-Maximum of Grad F . . . . . . .  1.0000e+00 eqn: (f[    4])
-                                            var: (x[    2])
+Maximum of F. . . . . . . . . .  1.2424e-01 eqn: (f[    1])
+Maximum of Grad F . . . . . . .  1.0344e+00 eqn: (f[    1])
+                                            var: (x[    1])
 
 INITIAL JACOBIAN NORM STATISTICS
-Maximum Row Norm. . . . . . . .  2.7727e+00 eqn: (f[    2])
-Minimum Row Norm. . . . . . . .  1.6364e+00 eqn: (f[    1])
-Maximum Column Norm . . . . . .  2.7727e+00 var: (x[    2])
-Minimum Column Norm . . . . . .  2.0000e+00 var: (x[    4])
+Maximum Row Norm. . . . . . . .  2.5000e+00 eqn: (f[    4])
+Minimum Row Norm. . . . . . . .  1.1539e+00 eqn: (f[    1])
+Maximum Column Norm . . . . . .  2.2668e+00 var: (x[    2])
+Minimum Column Norm . . . . . .  1.6539e+00 var: (x[    1])
 
 Crash Log
 major  func  diff  size  residual    step       prox   (label)
-    0     0             1.8951e-02             0.0e+00 (f[    2])
-    1     3     2     1 1.8837e-02  6.4e-01    0.0e+00 (f[    4])
-    2     4     2     2 0.0000e+00  1.0e+00    0.0e+00 (f[    1])
+    0     0             2.5465e-01             0.0e+00 (f[    1])
+    1     1     2     2 9.5410e-18  1.0e+00    0.0e+00 (f[    1])
 
 Major Iteration Log
 major minor  func  grad  residual    step  type prox    inorm  (label)
-    0     0     5     3 0.0000e+00           I 0.0e+00 0.0e+00 (f[    1])
+    0     0     2     2 9.5410e-18           I 0.0e+00 9.5e-18 (f[    1])
 
 FINAL STATISTICS
-Inf-Norm of Complementarity . .  0.0000e+00 eqn: (f[    1])
-Inf-Norm of Normal Map. . . . .  0.0000e+00 eqn: (f[    1])
-Inf-Norm of Minimum Map . . . .  0.0000e+00 eqn: (f[    1])
-Inf-Norm of Fischer Function. .  0.0000e+00 eqn: (f[    1])
-Inf-Norm of Grad Fischer Fcn. .  0.0000e+00 eqn: (f[    1])
-Two-Norm of Grad Fischer Fcn. .  0.0000e+00
+Inf-Norm of Complementarity . .  9.5410e-18 eqn: (f[    1])
+Inf-Norm of Normal Map. . . . .  9.5410e-18 eqn: (f[    1])
+Inf-Norm of Minimum Map . . . .  1.3878e-17 eqn: (f[    1])
+Inf-Norm of Fischer Function. .  9.5410e-18 eqn: (f[    1])
+Inf-Norm of Grad Fischer Fcn. .  9.8696e-18 eqn: (f[    1])
+Two-Norm of Grad Fischer Fcn. .  9.9024e-18
 
 FINAL POINT STATISTICS
-Maximum of X. . . . . . . . . .  9.4756e-03 var: (x[    4])
-Maximum of F. . . . . . . . . .  3.4295e+01 eqn: (f[    1])
-Maximum of Grad F . . . . . . .  1.0000e+00 eqn: (f[    4])
-                                            var: (x[    2])
+Maximum of X. . . . . . . . . .  1.2347e-01 var: (x[    1])
+Maximum of F. . . . . . . . . .  3.3687e-03 eqn: (f[    4])
+Maximum of Grad F . . . . . . .  1.0344e+00 eqn: (f[    1])
+                                            var: (x[    1])
 
  ** EXIT - solution found.
 
 Major Iterations. . . . 0
 Minor Iterations. . . . 0
 Restarts. . . . . . . . 0
-Crash Iterations. . . . 2
+Crash Iterations. . . . 1
 Gradient Steps. . . . . 0
-Function Evaluations. . 5
-Gradient Evaluations. . 3
-Basis Time. . . . . . . 0.000043
-Total Time. . . . . . . 0.000128
-Residual. . . . . . . . 0.000000e+00
+Function Evaluations. . 2
+Gradient Evaluations. . 2
+Basis Time. . . . . . . 0.000010
+Total Time. . . . . . . 0.000087
+Residual. . . . . . . . 9.540979e-18

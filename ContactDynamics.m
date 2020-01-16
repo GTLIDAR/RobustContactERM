@@ -138,9 +138,7 @@ classdef ContactDynamics < LagrangianModel
             % Get the normal and tangential forces
             f = f(1:numN+numT);
 
-        end
-           
-            
+        end           
         function checkSolver(self)
             if strcmpi(self.contactSolver,'PATH')
                 self.solver = @self.pathSolver;

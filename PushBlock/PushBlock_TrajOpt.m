@@ -22,13 +22,11 @@ plant.timestep = dt;
 x0 = [0,plant.height/2,0,0]';     
 xf = [5,plant.height/2,0,0];    
 
-% Specify the number of collocation points
-N = 101;
-
 % Specify the final time of the problem
-Tf = 5;     % Five seconds for this problem
+Tf = 1;     % Five seconds for this problem
 
-
+t_init = 0:plant.timestep:Tf;
+N = numel(t_init);
 
 % Create a Trajectory Optimization Problem 
 % Note that contact is implicit in the dynamics
@@ -49,7 +47,7 @@ prob = prob.setSolverOptions('snopt','MajorOptimalityTolerance',1e-6);
 prob = prob.setSolverOptions('snopt','ScaleOption',1);
 prob = prob.setSolverOptions('snopt','IterationsLimit',20000);
 % Create the initial guess at the solution
-t_init = linspace(0, Tf, N);
+%t_init = linspace(0, Tf, N);
 x_init = zeros(4,length(t_init));
 for n = 1:4
     x_init(n,:) = linspace(x0(n),xf(n),N);
@@ -57,6 +55,7 @@ end
 traj_init.x = PPTrajectory(foh(t_init,x_init));
 % Solve the problem
 disp("Running Trajectory Optimization");
+pause(0.5);
 tic;
 [xtraj, utraj, z, F, info] = prob.solveTraj(t_init, traj_init);
 toc
@@ -110,7 +109,7 @@ figure();
 subplot(2,1,1);
 plot(t,f(1,:));
 ylabel('Normal');
-title('Contact Impulses');
+title('Contact Forces');
 subplot(2,1,2);
 plot(t,f(2,:) - f(3,:));
 ylabel('Tangential');

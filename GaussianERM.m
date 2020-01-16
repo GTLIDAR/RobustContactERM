@@ -19,11 +19,7 @@ classdef GaussianERM < ContactSolver
     %   December 18, 2019.
     
     % TODO: Check gradient implementation 
-    %       Modify calculations for when sigma = 0 (i.e. uncertain
-    %       friction, but no contact)
     %       Warm start ERM Solver - Eliminate problems with singularities
-    %       Fix problem with gradient with the Hessian is singular
-    %       (specifically a zero row or column)
     
     properties
         mu;              % Mean of the distribution over the uncertain parameter (NOT the mean used by the final ERM formula)
@@ -63,7 +59,8 @@ classdef GaussianERM < ContactSolver
            obj.mu = m;
            obj.sigma = s;
            obj.uncertainIdx = idx;
-           obj.options = optimoptions('fmincon','Algorithm','interior-point','SpecifyObjectiveGradient',true,'display','none');
+           obj.options = optimoptions('fmincon','Algorithm','interior-point',...
+                'SpecifyObjectiveGradient',true,'display','none');
            obj.Reg = zeros(numel(idx));
        end
        function [f, r] = solve(obj, P, w)
@@ -83,7 +80,10 @@ classdef GaussianERM < ContactSolver
            %               evaluation)
            
            % Calculate an initial guess
-           f0 = pathlcp(P, w);
+           %f0 = pathlcp(P, w);
+           f0 = ones(numel(w), 1);
+           m_mu = obj.ermMean(f0, P, w);
+           f0(obj.uncertainIdx,:) = m_mu;   % Set stochastic variables to the mean value
            % Cost function
            cost = @(x) ermCost(obj, x, P, w);
            % Hessian function
@@ -117,15 +117,10 @@ classdef GaussianERM < ContactSolver
            %   Return Values:
            %       df:    NxM double, the derivatives of the solution f
            %              with respect to the other problem variables (usually state and control)
-           warning('error','MATLAB:singularMatrix');
-           try
-               % Get the second derivatives
-               [g_xx, g_xy] = obj.ermSecondDerivatives(x, P, w, dP, dw);
-               % Solve the system of equations to get the gradient
-               df = - g_xx\g_xy;
-           catch
-               disp('warning caught');
-           end
+           % Get the second derivatives
+           [g_xx, g_xy] = obj.ermSecondDerivatives(x, P, w, dP, dw);
+           % Solve the system of equations to get the gradient
+           df = - g_xx\g_xy;
            % NOTE: Check if we need to zero out the components of the
            % gradient corresponding to the zero solution.
        end
