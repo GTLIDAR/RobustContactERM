@@ -16,7 +16,7 @@ addpath(genpath('PATH_LCP'));
 x = load('KinematicWarmStart/ContactCart_KinematicSequence.mat');
 x_init = x.x;
 
-name = 'ContactCart_LCP_TrajOpt';
+name = 'ContactCart_LCP_TrajOpt_SemiImplicit';
 % Create the plant model
 dt = 0.01;
 plant = ContactDrivenCart();
@@ -43,7 +43,15 @@ N = numel(t_init);
 
 % Create a Trajectory Optimization Problem 
 % Note that contact is implicit in the dynamics
-prob = DirtranTrajectoryOptimization(plant, N, Tf);
+% Set the integration method
+%   integration_method = 1: Forward Euler (Explicit Euler)
+%   integration_method = 2: Backward Euler (Implicit Euler)
+%   integration_method = 3: Midpoint Rule
+%   the default is 3: midpoint rule
+%   for contact dynamics, we should use the forward euler to be consistent
+%   with the contact force calculation.
+
+prob = SemiImplicitTrajectoryOptimization(plant, N, Tf);
 
 % Add a running cost
 %prob = prob.addRunningCost(@cost);
@@ -68,7 +76,7 @@ tic;
 [xtraj, utraj, z, F, info] = prob.solveTraj(t_init, traj_init);
 toc
 
-save(name,'xtraj','utraj','z','F','info','plant','traj_init');
+save(name,'xtraj','utraj','z','F','info','plant','traj_init','x0','xf','t_init');
 
 % Notes on the output of prob.solveTraj:
 %   Return values:

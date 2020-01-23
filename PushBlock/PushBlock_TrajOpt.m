@@ -12,19 +12,19 @@ add_drake;
 cd(here);
 addpath(genpath('PATH_LCP'));
 
-name = 'PushBlock_TrajOpt';
+name = 'PushBlock_TrajOpt_Nominal';
 % Create the plant model
 dt = 0.01;
 plant = Block();
 plant.timestep = dt;
-
+plant.terrain.friction_coeff = 0.5;
 % Specify the initial and final conditions
 x0 = [0,plant.height/2,0,0]';     
 xf = [5,plant.height/2,0,0];    
 
 % Specify the final time of the problem
 Tf = 1;     % Five seconds for this problem
-
+    
 t_init = 0:plant.timestep:Tf;
 N = numel(t_init);
 
@@ -44,8 +44,8 @@ prob = prob.addStateConstraint(ConstantConstraint(xf),N);
 prob = prob.setSolver('snopt');
 prob = prob.setSolverOptions('snopt','MajorFeasibilityTolerance',1e-6);
 prob = prob.setSolverOptions('snopt','MajorOptimalityTolerance',1e-6);
-prob = prob.setSolverOptions('snopt','ScaleOption',1);
-prob = prob.setSolverOptions('snopt','IterationsLimit',20000);
+prob = prob.setSolverOptions('snopt','ScaleOption',2);
+prob = prob.setSolverOptions('snopt','IterationsLimit',10000);
 % Create the initial guess at the solution
 %t_init = linspace(0, Tf, N);
 x_init = zeros(4,length(t_init));

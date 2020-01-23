@@ -72,61 +72,7 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             % limits)
 %             obj = setInputLimits(obj,-15,15);
         end 
-        function [H, C, B, dH, dC, dB] = manipulatorDynamics(obj,q,dq)
-            %% MANIPULATORDYNAMICS: Returns parameters for calculating the system dynamics
-            %
-            %   manipulatorDynamics calculates and returns the mass matrix,
-            %   force effects, and input selection matrix, and their
-            %   derivatives, for use in calculating the system dynamics.
-            %   manipulatorDynamics is a required method for subclasses of
-            %   Drake's Manipulator class.
-            %
-            %   Syntax:
-            %       [H,C,B,dH,dC,dB] = manipulatorDynamics(obj, q, dq);
-            %       [H,C,B,dH,dC,dB] = obj.manipulatorDynamics(q,dq);
-            %
-            %   Arguments:
-            %       OBJ: A ContactDrivenCart object
-            %       q:   3x1 double, the configuration vector
-            %       dq:  3x1 double, the configuration rate vector
-            %
-            %   Return Values:
-            %       H:  3x3 double, the mass matrix evaluated at q
-            %       dH: 3x9 double, the derivatives of the mass matrix with
-            %           respect to q
-            %       C:  3x1 double, a vector of force effects evaluated at
-            %           q
-            %       dC: 3x6 double, the derivatives of C wrt q and dq
-            %       B:  3x2 double, the control selection matrix
-            %       dB: 3x6 double, the derivatives of B wrt q
-            %
-            %   Note: for dH, every three columns is a derivative wrt a 
-            %   different element in q. i.e. dH(:,1:3) is the derivative 
-            %   wrt q(1), dH(:,4:6) is the derivative wrt q(2). Likewise, 
-            %   every 2 columns of dB is a derivative wrt each q.
-            
-            % Get the system parameters
-            [H, dH] = obj.massMatrix(q);
-            [C, dC] = obj.coriolisMatrix(q,dq);
-            [N, dN] = obj.gravityMatrix(q);
-            [B, dB] = obj.controllerMatrix(q);
-            % Calculate the gradient of C (coriolis matrix) wrt q
-            dC_q = times(dC(:,:,1:obj.numQ), reshape(dq,1,obj.numQ,1));
-            dC_q = squeeze(sum(dC_q, 2));
-            % Gradient of force effects wrt q
-            dC_q = dC_q + dN;
-            % Calculate the gradient of the Coriolis effects wrt dq
-            dC_dq = times(dC(:,:,obj.numQ+1:end), reshape(dq, 1, obj.numQ, 1));
-            dC_dq = squeeze(sum(dC_dq, 2));
-            dC_dq = dC_dq + C; 
-            % Gradient of all force effects wrt q and dq
-            dC = [dC_q, dC_dq]';
-            % Combine the coriolis and gravitational effects
-            C = C*dq + N;
-            % Reshape dM and dB
-            dH = reshape(dH, [size(dH, 1), size(dH,2) * size(dH, 3)])';
-            dB = reshape(dB, [size(dB, 1), size(dB, 2) * size(dB, 3)])';
-        end
+
     end
    %% ------ Methods defining the dynamic properties  -------------- %%
     methods 

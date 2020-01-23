@@ -19,33 +19,6 @@ classdef Block < Manipulator & DifferentiableContactDynamics
             nU = 1;
             obj = obj@Manipulator(nQ, nU);
         end
-        function [H,C,B, dH, dC, dB] = manipulatorDynamics(obj,q,dq)
-            
-            [H, dH] = obj.massMatrix(q);
-            [C, dC] = obj.coriolisMatrix(q,dq);
-            [N, dN] = obj.gravityMatrix(q);
-            [B, dB] = obj.controllerMatrix(q);
-            
-            % Gradient wrt q
-            dC_q = times(dC(:,:,1:obj.numQ), reshape(dq,1,obj.numQ,1));
-            dC_q = squeeze(sum(dC_q, 2));
-            
-            dC_q = dC_q + dN;
-            % Gradient wrt dq
-            dC_dq = times(dC(:,:,obj.numQ+1:end), reshape(dq, 1, obj.numQ, 1));
-            dC_dq = squeeze(sum(dC_dq, 2));
-            dC_dq = dC_dq + C;
-            
-            % Gradient of C*q + N
-            dC = [dC_q, dC_dq]';
-            
-            % Combine the coriolis and gravitational effects
-            C = C*dq + N;
-            
-            % Reshape dM and dB
-            dH = reshape(dH, [size(dH, 1), size(dH,2) * size(dH, 3)])';
-            dB = reshape(dB, [size(dB, 1), size(dB, 2) * size(dB, 3)])';
-        end
         function [M, dM] = massMatrix(obj,q)
             M = obj.mass * eye(2);
             dM = zeros(2,2,2);

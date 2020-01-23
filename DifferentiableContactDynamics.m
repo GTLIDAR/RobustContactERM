@@ -8,6 +8,16 @@ classdef DifferentiableContactDynamics
         contactSolver = PathLCPSolver();  
         lcpCache = [];
         cacheFlag = false;
+        contact_integration_method = 1;
+        %NOTE on CONTACT_INTEGRATION_METHOD
+        %   Values have the following meaning:
+        %       1: Forward integration. Contact is evaluated at the
+        %       (projected) next configuration
+        %       2: Backward integration. Contact is evaluated at the given
+        %       configuration
+        %       3: Midpoint integration. Contact is evaluated at the next
+        %       (projected) configuration, but the projection is performed
+        %       using half the timestep
     end
     
     methods
@@ -41,6 +51,54 @@ classdef DifferentiableContactDynamics
                % Now integrate the position
                x(1:obj.numQ,n+1) = x(1:obj.numQ,n) + x(obj.numQ+1:end,n+1) * obj.timestep;
             end
+        end
+        function [H, C, B, dH, dC, dB] = manipulatorDynamics(obj,q,dq)
+            %% MANIPULATORDYNAMICS: Returns parameters for calculating the system dynamics
+            %
+            %   manipulatorDynamics calculates and returns the mass matrix,
+            %   force effects, and input selection matrix, and their
+            %   derivatives, for use in calculating the system dynamics.
+            %   manipulatorDynamics is a required method for subclasses of
+            %   Drake's Manipulator class.
+            %
+            %   Syntax:
+            %       [H,C,B,dH,dC,dB] = manipulatorDynamics(obj, q, dq);
+            %       [H,C,B,dH,dC,dB] = obj.manipulatorDynamics(q,dq);
+            %
+            %   Arguments:
+            %       OBJ: A DifferentiableContactDynamics object
+            %       q:   Nx1 double, the configuration vector
+            %       dq:  Nx1 double, the configuration rate vector
+            %
+            %   Return Values:
+            %       H:  NxN double, the mass matrix evaluated at q
+            %       dH: NxN^2 double, the derivatives of the mass matrix with
+            %           respect to q
+            %       C:  Nx1 double, a vector of force effects evaluated at
+            %           q
+            %       dC: Nx2N double, the derivatives of C wrt q and dq
+            %       B:  NxM double, the control selection matrix
+            %       dB: NxNM double, the derivatives of B wrt q
+            %
+            %   Note: for dH, every N columns is a derivative wrt a 
+            %   different element in q. i.e. dH(:,1:N) is the derivative 
+            %   wrt q(1). Likewise, every M columns of dB is a derivative 
+            %   wrt each q.
+            
+            % Get the system parameters
+            [H, dH] = obj.massMatrix(q);
+            [C, dC] = obj.coriolisMatrix(q,dq);
+            [N, dN] = obj.gravityMatrix(q);
+            [B, dB] = obj.controllerMatrix(q);
+            % Calculate the gradient of C (coriolis matrix) wrt q
+            dC = squeeze(sum(dC .* dq', 2));
+            % Gradient of force effects wrt [q, dq]
+            dC = dC + [dN, C];
+            % Combine the coriolis and gravitational effects
+            C = C*dq + N;
+            % Reshape dM and dB
+            dH = reshape(dH, [size(dH, 1), size(dH,2) * size(dH, 3)])';
+            dB = reshape(dB, [size(dB, 1), size(dB, 2) * size(dB, 3)])';
         end
         function [f, df] = dynamics(obj, t, x, u)
             %% DYNAMICS: Evaluates the dynamics of the Lagrangian System
@@ -89,10 +147,7 @@ classdef DifferentiableContactDynamics
                 obj.lcpCache.data.force(:,id) = fc;
             end
             % Get the physical parameters of the system (mass matrix, etc)
-            [M, dM] = obj.massMatrix(q);
-            [C, dC] = obj.coriolisMatrix(q,dq);  %Optionally return the mass matrix, to avoid calculating it twice.
-            [N, dN] = obj.gravityMatrix(q);
-            [B, dB] = obj.controllerMatrix(q);
+            [M, C, B, dM, dC, dB] = obj.manipulatorDynamics(q, dq);
             [Jn, Jt, dJn, dJt] = obj.contactJacobian(q);
             % Transpose the Jacobians
             Jc = [Jn; Jt]';
@@ -104,23 +159,24 @@ classdef DifferentiableContactDynamics
             %Minv = M\eye(obj.numQ);
             
             % Calculate the dynamics f
-            tau = B*u - C*dq - N;
+            tau = B*u - C;
             ddq = R\(R'\(tau + Jc * fc));
             
             % Dynamics
             f = [dq; ddq];
             
             if nargout == 2
+                dM = reshape(dM', obj.numQ*[1,1,1]);
+                dB = reshape(dB', [obj.numQ, obj.numU, obj.numQ]);
                 % First calculate the derivatives without the contact force
                 % derivative
                 % Calculate the gradient wrt q
                 dBu = squeeze(sum(dB .* u', 2));
-                dC_dq = squeeze(sum(dC .* dq', 2));
                 dJc_f = squeeze(sum(dJc .* fc', 2));               
                 % Gradient of tau wrt q
-                dtau_q = dBu - dC_dq(:,1:obj.numQ) - dN;
+                dtau_q = dBu - dC(:,1:obj.numQ);
                 % Gradient of tau wrt dq
-                dtau_dq = - (dC_dq(:,obj.numQ+1:end) + C);
+                dtau_dq = - dC(:,obj.numQ+1:end);
                 % Gradient of the inverse mass matrix
                 dMinv = zeros(size(dM));
                 for n = 1:obj.numQ
@@ -187,15 +243,13 @@ classdef DifferentiableContactDynamics
         end
 
         function [P, z, dP, dz, numF] = getLCP(obj, q, dq, u)
-            % Simulate the configuration using constant velocity
-            qhat = q + obj.timestep*dq;
-            % Get the system properties
-            %[M, C, B, dM, dC, dB]  = obj.manipulatorDynamics(qhat, dq, u);
-            [M, dM] = obj.massMatrix(qhat);
-            [C, dC] = obj.coriolisMatrix(qhat,dq);
-            [N, dN] = obj.gravityMatrix(qhat);
-            [B, dB] = obj.controllerMatrix(qhat);
             
+            % Simulate forward one step
+            qhat = q + dq * obj.timestep;
+            % Get the system properties
+            [M, C, B, dM, dC, dB]  = obj.manipulatorDynamics(qhat, dq);
+            dM = reshape(dM', obj.numQ*[1,1,1]);
+            dB = reshape(dB', [obj.numQ, obj.numU, obj.numQ]);
             % Invert the mass matrix, as we'll be using the inverse often
             R = chol(M);
             %iM = M\eye(obj.numQ);
@@ -211,7 +265,7 @@ classdef DifferentiableContactDynamics
             z = zeros(numT + 2*numN, 1);
             % Calculate the force effects, tau, and the no-contact velocity
             % vel:
-            tau = B*u - C*dq - N;
+            tau = B*u - C;
             vel = dq + obj.timestep * (R\(R'\tau));
            
             % The LCP offset vector
@@ -245,11 +299,10 @@ classdef DifferentiableContactDynamics
             dP(:,:,obj.numQ+1:2*obj.numQ) = obj.timestep * dP(:,:,1:obj.numQ);
             % Calculate the gradient of the offset vector, z:
             % First we do some multidimensional array multiplication:
-            dC = squeeze(sum(dC.*dq', 2));
             dBu = squeeze(sum(dB.*u', 2));            
             % Gradients of TAU wrt q, dq
-            dtau_q = dBu - dC(:,1:obj.numQ) - dN;
-            dtau_dq = -(dC(:,obj.numQ+1:end) + C) + obj.timestep*dtau_q;
+            dtau_q = dBu - dC(:,1:obj.numQ);
+            dtau_dq = -dC(:,obj.numQ+1:end) + obj.timestep*dtau_q;
             
             % Tensor Multiplications
             diM_tau = squeeze(sum(diM .* tau', 2));
