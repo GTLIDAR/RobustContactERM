@@ -1,4 +1,4 @@
-classdef Block < Manipulator & DifferentiableContactDynamics
+classdef Block < DifferentiableContactDynamics
     %UNTITLED3 Summary of this class goes here
     %   Detailed explanation goes here
     
@@ -15,9 +15,8 @@ classdef Block < Manipulator & DifferentiableContactDynamics
             % When we subclass Manipulator, we must provide
             % the number of configuration variables nQ and the
             % number of controls nU
-            nQ = 2;
-            nU = 1;
-            obj = obj@Manipulator(nQ, nU);
+            obj.numQ = 2;
+            obj.numU = 1;
         end
         function [M, dM] = massMatrix(obj,q)
             M = obj.mass * eye(2);

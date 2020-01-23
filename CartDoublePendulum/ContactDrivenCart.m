@@ -1,4 +1,4 @@
-classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
+classdef ContactDrivenCart < DifferentiableContactDynamics
     %% CONTACTDRIVENCART: An example for using Contact-Implicit Trajectory Optimization
     %
     %   ContactDrivenCart implements a two-link pendulum attached to a cart
@@ -65,9 +65,8 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             %   the lines referring to the Manipulator Class.
             
             % Create a Manipulator
-            nQ = 3;
-            nU = 2;
-            obj = obj@Manipulator(nQ, nU);
+            obj.numQ = 3;
+            obj.numU = 2;
             % Optionally set control limits (uncomment to include control
             % limits)
 %             obj = setInputLimits(obj,-15,15);
