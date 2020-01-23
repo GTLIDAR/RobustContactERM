@@ -1,4 +1,4 @@
-classdef FlatTerrain
+classdef FlatTerrain < Terrain2D
     %FlatTerrain - 2D flat terrain
     %
     %   
