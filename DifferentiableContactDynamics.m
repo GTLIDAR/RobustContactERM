@@ -420,7 +420,7 @@ classdef DifferentiableContactDynamics
            
            f = zeros(numF, length(t));
            
-           obj.lcpCache = SharedDataHandle(struct('time',t,'force',f));
+           obj.lcpCache = struct('time',t,'force',f);
            obj.cacheFlag = true;
         end
     end
