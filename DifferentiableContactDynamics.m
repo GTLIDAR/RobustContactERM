@@ -238,8 +238,8 @@ classdef DifferentiableContactDynamics
             % Get the normal and tangential forces
             f = f(1:numF,:);
             % Convert impulse into force
-            f = f./obj.timestep;
-            df = df./obj.timestep;
+            %f = f./obj.timestep;
+            %df = df./obj.timestep;
         end
 
         function [P, z, dP, dz, numF] = getLCP(obj, q, dq, u)
@@ -280,7 +280,7 @@ classdef DifferentiableContactDynamics
                 w(n,numT*(n-1)+1:numT*n) = 1;
             end
             Jr = Jc/R;            
-            P(1:numN + numT, 1:numN + numT) = Jr * Jr';
+            P(1:numN + numT, 1:numN + numT) = obj.timestep * Jr * Jr';
             P(numN+1:numN+numT, numN+numT+1:end) = w';
             P(numN + numT+1:end,1:numN) = eye(numN) * obj.terrain.friction_coeff;
             P(numN+numT+1:end,numN+1:numN+numT) = -w;
@@ -297,6 +297,7 @@ classdef DifferentiableContactDynamics
             end
             % Gradient of P wrt dq
             dP(:,:,obj.numQ+1:2*obj.numQ) = obj.timestep * dP(:,:,1:obj.numQ);
+            dP = obj.timestep * dP;
             % Calculate the gradient of the offset vector, z:
             % First we do some multidimensional array multiplication:
             dBu = squeeze(sum(dB.*u', 2));            

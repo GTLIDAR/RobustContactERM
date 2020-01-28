@@ -12,7 +12,7 @@ add_drake;
 cd(here);
 addpath(genpath('PATH_LCP'));
 
-name = 'PushBlock_TrajOpt_Nominal';
+name = 'PushBlock_TrajOpt_Test';
 % Create the plant model
 dt = 0.01;
 plant = Block();
@@ -44,6 +44,7 @@ prob = prob.addStateConstraint(ConstantConstraint(xf),N);
 prob = prob.setSolver('snopt');
 prob = prob.setSolverOptions('snopt','MajorFeasibilityTolerance',1e-6);
 prob = prob.setSolverOptions('snopt','MajorOptimalityTolerance',1e-6);
+prob = prob.setSolverOptions('snopt','MinorFeasibilityTolerance',1e-3);
 prob = prob.setSolverOptions('snopt','ScaleOption',2);
 prob = prob.setSolverOptions('snopt','IterationsLimit',10000);
 % Create the initial guess at the solution
@@ -121,7 +122,6 @@ function [g, dg] = cost(dt, x, u)
 % Running cost
 R = eye(numel(u)); % Control weights
 Q = eye(numel(x)); % State weights
-Q(1,1) = 0;
 
 g = 1/2 * (u' * R * u + x'*Q*x);
 
