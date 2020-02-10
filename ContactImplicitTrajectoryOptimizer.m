@@ -5,6 +5,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         numFriction;    % Number of friction basis vectors per contact
         lambda_inds;    % Indices for finding the contact variables inside the decision variables, ordered [normal; tangential; velocity_slacks];
         force_inds;     % Indices for finding the force variables from inside the contact variables, ordered [normal; tangential];
+        force_converter;% Orthonormal matrix for converting the force variables to [normal1, tang1, slack1, ... normalN, tangN, slackN] ordering
+                        % from [normal1, ... normalN, tang1,...tangN, slack1 ... slackN] ordering
     end
     properties (Constant)
         % INTEGRATION METHODS
@@ -69,6 +71,18 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            
            % Add decision variables for the forces
            obj = obj.addDecisionVariable(N * nContactForces);
+           
+           % Add an additional "force converter" property to the object
+           S = zeros(nContactForces);
+           % Select the normal forces
+           S(1:2+obj.numFriction:end, 1:obj.numContacts) = eye(obj.numContacts);
+           % Select the slack variables
+           S(obj.numFriction + 2: obj.numFriction+2:end, obj.numContacts*(1+obj.numFriction) + 1:end) = eye(obj.numContacts);
+           for k = 1:obj.numContacts
+               % Select the tangential forces
+               S((2 + obj.numFriction)*(k-1) + 2:(2+obj.numFriction)*(k-1) + 1 + obj.numFriction,obj.numContacts + 1 + obj.numFriction*(k-1):obj.numContacts + obj.numFriction*k) = eye(obj.numFriction);
+           end
+           obj.force_converter = sparse(S);
         end
         function [xtraj, utraj, ftraj,z,F, info] = solveTraj(obj, t_init, traj_init)
             % Solve the problem using
@@ -82,6 +96,21 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 ftraj = [];
             end
         end
+        function z0 = getInitialVars(obj, t_init, traj_init)
+           %% getInitialVars: Get the initial decision variables from the trajectories
+           %
+           %    getInitialVars extends the previous implemention to add
+           %    contact variables to the decision variable list
+           
+           z0 = getInitialVars@DirectTrajectoryOptimization(obj, t_init, traj_init);
+           % Add contact variables
+           if obj.numContacts > 0
+               if isfield(traj_init, 'lambda')
+                   z0(obj.lambda_inds) = traj_init.lambda.eval(t_init);
+               end
+           end          
+        end
+        
         function obj = addDynamicConstraints(obj)
             %% addDynamicConstraints: Add the dynamics as constraints to the problem
             %
@@ -139,12 +168,11 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             nX = obj.plant.getNumStates();
             for i = 1:obj.N - 1
                 % Add in the nonlinear complementarity constraints
-                ncp_cstr = NonlinearComplementarityConstraint_original(@obj.contact_constraint_fun, nX, obj.numContacts * (2 + obj.numFriction), obj.options.nlcc_mode, obj.options.compl_slack);
+                nlc_cstr = NonlinearComplementarityConstraint_original(@obj.contact_constraint_fun, nX, obj.numContacts * (2 + obj.numFriction), obj.options.nlcc_mode, obj.options.compl_slack);
                 %ncp_cstr = NonlinearComplementarityConstraint(@contat_constraint_fun, nX, obj.numContacts*(2+obj.numFriction), obj.options.nlcc_mode);
-                obj = obj.addConstraint(ncp_cstr, [obj.x_inds(:,i+1); obj.lambda_inds(:,i)]);
+                obj = obj.addConstraint(nlc_cstr, [obj.x_inds(:,i+1); obj.lambda_inds(:,i)]);
             end
         end
-        
         function obj = addRunningCost(obj, running_cost_function)
            %% addRunningCost: add the running cost function as the objective
            %
@@ -498,9 +526,9 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dg = [dh(:,1), 0.5*dh(:,2:1 + nX), 0.5*dh(:, 2:1 + nX), 0.5 * dh(:, nX+2 : nX+nU+1), 0.5 * dh(:, nX+2: nX + nU + 1)];
         end
         function [f, df] = contact_constraint_fun(obj, y)
-            %% CONTACT_NCP_CONSTRAINT_FUN: Function evaluating the contact nonlinear complementarity function
+            %% CONTACT_CONSTRAINT_FUN: Function evaluating the contact nonlinear complementarity function
             %
-            % CONTACT_NCP_CONSTRIANT_FUN implements the function whose values
+            % CONTACT_CONSTRIANT_FUN implements the function whose values
             % are complementary to the contact forces. For normal forces
             % lambda_N and frictional forces lambda_T:
             %
