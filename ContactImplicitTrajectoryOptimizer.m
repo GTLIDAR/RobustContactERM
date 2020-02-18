@@ -7,6 +7,11 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         force_inds;     % Indices for finding the force variables from inside the contact variables, ordered [normal; tangential];
         force_converter;% Orthonormal matrix for converting the force variables to [normal1, tang1, slack1, ... normalN, tangN, slackN] ordering
                         % from [normal1, ... normalN, tang1,...tangN, slack1 ... slackN] ordering
+        normal_inds;    % Row indices for the normal forces    
+        tangent_inds;   % Row indices for the tangential forces
+        gamma_inds;     % Row indices for the sliding velocity slack variables.
+        
+        cost_handle;    % Handle to the running cost function
     end
     properties (Constant)
         % INTEGRATION METHODS
@@ -83,10 +88,21 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                S((2 + obj.numFriction)*(k-1) + 2:(2+obj.numFriction)*(k-1) + 1 + obj.numFriction,obj.numContacts + 1 + obj.numFriction*(k-1):obj.numContacts + obj.numFriction*k) = eye(obj.numFriction);
            end
            obj.force_converter = sparse(S);
+           
+           % Set the index variables for the individual forces
+           skip = 2 + obj.numFriction;
+           % Normal force indices
+           obj.normal_inds = 1:skip:nContactForces;
+           % Sliding velocity slack indices
+           obj.gamma_inds = skip:skip:nContactForces;
+           % Tangential force indices
+           T_idx = 1:nContactForces;
+           T_idx([obj.normal_inds,obj.gamma_inds]) = [];
+           obj.tangent_inds = T_idx;
         end
-        function [xtraj, utraj, ftraj,z,F, info] = solveTraj(obj, t_init, traj_init)
+        function [xtraj, utraj, ftraj,z,F, info, infeasible] = solveTraj(obj, t_init, traj_init)
             % Solve the problem using
-            [xtraj, utraj, z, F, info] = solveTraj@DirectTrajectoryOptimization(obj, t_init, traj_init);
+            [xtraj, utraj, z, F, info, infeasible] = solveTraj@DirectTrajectoryOptimization(obj, t_init, traj_init);
             
             % Pull the contact forces from the decision variable list
             if obj.numContacts > 0
@@ -179,21 +195,21 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            %    
             nX = obj.plant.getNumStates();
             nU = obj.plant.getNumInputs();
-            
+            obj.cost_handle = running_cost_function;    % Store the handle to the running cost functional
             for i=1:obj.N-1
                 switch obj.options.integration_method
                     case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
-                        running_cost = FunctionHandleObjective(1+nX+nU, running_cost_function);
+                        running_cost = FunctionHandleObjective(1+nX+nU, @(h, x, u)obj.reimann_sum(running_cost_function, h, x, u));
                         inds_i = {obj.h_inds(i);obj.x_inds(:,i);obj.u_inds(:,i)};
                     case ContactImplicitTrajectoryOptimizer.BACKWARD_EULER
-                        running_cost = FunctionHandleObjective(1+nX+nU, running_cost_function);
+                        running_cost = FunctionHandleObjective(1+nX+nU, @(h, x, u)obj.reimann_sum(running_cost_function, h, x, u));
                         inds_i = {obj.h_inds(i);obj.x_inds(:,i+1);obj.u_inds(:,i)};
                     case ContactImplicitTrajectoryOptimizer.MIDPOINT
                         running_cost = FunctionHandleObjective(1+2*nX+2*nU,...
                             @(h,x0,x1,u0,u1) obj.midpoint_running_fun(running_cost_function,h,x0,x1,u0,u1));
                         inds_i = {obj.h_inds(i);obj.x_inds(:,i);obj.x_inds(:,i+1);obj.u_inds(:,i);obj.u_inds(:,i+1)};
                     case ContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
-                        running_cost = FunctionHandleObjective(1+nX+nU, running_cost_function);
+                        running_cost = FunctionHandleObjective(1+nX+nU, @(h, x, u)obj.reimann_sum(running_cost_function, h, x, u));
                         inds_i = {obj.h_inds(i);obj.x_inds(:,i);obj.u_inds(:,i)};
                     otherwise
                         error('Unknown integration method');
@@ -522,9 +538,20 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             nX = obj.plant.getNumStates();
             nU = obj.plant.getNumInputs();
             [g, dh] = cost_fun(h, 0.5*(x0 + x1), 0.5*(u0 + u1));
+            % Include the timestep in the integration
+            g = h*g;
+            dh = h * dh;
             
-            dg = [dh(:,1), 0.5*dh(:,2:1 + nX), 0.5*dh(:, 2:1 + nX), 0.5 * dh(:, nX+2 : nX+nU+1), 0.5 * dh(:, nX+2: nX + nU + 1)];
+            dg = [dh(:,1) + g, 0.5*dh(:,2:1 + nX), 0.5*dh(:, 2:1 + nX), 0.5 * dh(:, nX+2 : nX+nU+1), 0.5 * dh(:, nX+2: nX + nU + 1)];
         end
+        function [g, dg] = reimann_sum(obj, cost_fun, h, x0, u0)
+            
+            [f, df] = cost_fun(h, x0, u0);
+            g = h * f;
+            dg = h * df;
+            dg(:,1) = dg(:,1) + f;
+        end
+        
         function [f, df] = contact_constraint_fun(obj, y)
             %% CONTACT_CONSTRAINT_FUN: Function evaluating the contact nonlinear complementarity function
             %
@@ -603,6 +630,12 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 % Derivative wrt gamma
                 df(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i), nQ+nV+G_idx(i)) = 1;
             end
+        end
+    end
+    methods
+        function obj = addDisplayFunction(obj, display_fun)
+           %% AddDisplayFunction: Overloads the native addDisplayFunction to split the decision variables into separate inputs
+           obj = addDisplayFunction@NonlinearProgram(obj, @(z)display_fun(z(obj.h_inds), z(obj.x_inds), z(obj.u_inds), z(obj.lambda_inds))); 
         end
     end
 end

@@ -469,7 +469,7 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
            % Calculate the second joint angle
            % Note there are actually two solutions for the second joint
            % angle, but acos will only return one
-           q(3) = acos((sum(r.^2) - sum(obj.lengths.^2))/(2*obj.lengths(1)*obj.lengths(2)));
+           q(3) = -acos((sum(r.^2) - sum(obj.lengths.^2))/(2*obj.lengths(1)*obj.lengths(2)));
            % Calculate the first joint angle using atan2 to get a unique
            % solution
            beta = atan2(r(1), r(2));

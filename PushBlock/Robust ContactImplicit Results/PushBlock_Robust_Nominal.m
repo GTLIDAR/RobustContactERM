@@ -12,7 +12,7 @@ add_drake;
 cd(here);
 addpath(genpath('PATH_LCP'));
 
-name = 'PushBlock_Robust_ERM_Nominal_Test2';
+name = 'PushBlock_Robust_Nominal';
 % Create the plant model
 dt = 0.01;
 plant = Block();
@@ -92,7 +92,6 @@ save(name,'plant','xtraj','utraj','ltraj','t_init','z','F','info','plant','x0','
 S = [1,0,0,0;0,1,-1,0];
 f = S*l;
 
-
 % Plot the results
 figure();
 subplot(3,1,1);
@@ -138,7 +137,7 @@ dg = [zeros(1),x'*Q,u'*R];
 end
 function [g, dg] = cost2(~, x, u, xf)
 % Running cost
-R = 100*eye(numel(u)); % Control weights
+R = eye(numel(u)); % Control weights
 Q = eye(numel(x)); % State weights
 
 g = 1/2 * ( (x - xf)'*Q*(x - xf) + u' * R * u);

@@ -30,7 +30,7 @@ xf = [10,0];     % final condition in cartesian coordinates
 q0 = plant.inverseKinematics(x0);
 qF = plant.inverseKinematics(xf);
 
-x0 = [q0;zeros(3,1)];
+x0 = [q0; zeros(3,1)];
 xf = [qF; zeros(3,1)];
 
 % Specify the final time of the problem (seconds)
