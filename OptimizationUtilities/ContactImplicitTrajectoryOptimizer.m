@@ -11,6 +11,9 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         tangent_inds;   % Row indices for the tangential forces
         gamma_inds;     % Row indices for the sliding velocity slack variables.
         
+        slack_inds;     % Indices for the NCC Slack variables 
+        relax_inds = [];% Indices for the NCC relaxation variables         
+        
         cost_handle;    % Handle to the running cost function
     end
     properties (Constant)
@@ -19,6 +22,10 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         BACKWARD_EULER = 2;
         MIDPOINT = 3;
         SEMI_IMPLICIT = 4;
+        % TIME CONSTRAINT METHODS
+        FREETIME = 1;
+        PAIRWISETIME = 2;
+        BOUNDTIME = 3;
     end
     
     methods 
@@ -45,8 +52,25 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             if ~isfield(options,'compl_slack')
                 options.compl_slack = 0;
             end
-            
-            obj = obj@DirectTrajectoryOptimization(plant, N, duration, options);
+            if ~isfield(options, 'time_option')
+               options.time_option = 1; 
+            end
+            if ~isfield(options, 'time_constraints')
+                options.time_constraints = 1;
+            end
+            if ~isfield(options, 'duration')
+                if isscalar(duration)
+                    options.duration = [duration, duration];
+                else
+                    options.duration = duration;
+                end
+            end
+            if ~isfield(options, 'relax_cost')
+               options.relax_cost = 1; 
+            end
+            % Construct the object
+            obj = obj@DirectTrajectoryOptimization(plant, N, duration, options);    
+
         end
         
         function obj = setupVariables(obj, N)
@@ -99,6 +123,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            T_idx = 1:nContactForces;
            T_idx([obj.normal_inds,obj.gamma_inds]) = [];
            obj.tangent_inds = T_idx;
+           
+           % Set the relaxation variables
+           if obj.options.nlcc_mode == 5
+               [obj, inds] = obj.addDecisionVariable(N-1);
+               obj.relax_inds = inds;
+           end
+           
         end
         function [xtraj, utraj, ftraj,z,F, info, infeasible] = solveTraj(obj, t_init, traj_init)
             % Solve the problem using
@@ -124,9 +155,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                if isfield(traj_init, 'lambda')
                    z0(obj.lambda_inds) = traj_init.lambda.eval(t_init);
                end
-           end          
+           end     
         end
-        
         function obj = addDynamicConstraints(obj)
             %% addDynamicConstraints: Add the dynamics as constraints to the problem
             %
@@ -146,15 +176,19 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
                     n_vars = 2*nX + nU + 1 + nL;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.forward_constraint_fun);
+                    cstr = cstr.setName(sprintf('DynamicConstraint_Forward'));
                 case ContactImplicitTrajectoryOptimizer.BACKWARD_EULER
                     n_vars = 2*nX + nU + 1 + nL;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.backward_constraint_fun);
+                    cstr = cstr.setName(sprintf('DynamicConstraint_Backward'));
                 case ContactImplicitTrajectoryOptimizer.MIDPOINT
                     n_vars = 2*nX + 2*nU + 1 + nL;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.midpoint_constraint_fun);
+                    cstr = cstr.setName(sprintf('DynamicConstraint_Midpoint'));
                 case ContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
                     n_vars = 2*nX + nU + 1 + nL;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.semiimplicit_constraint_fun);
+                    cstr = cstr.setName(sprintf('DynamicConstriant_SemiImplicit'));
                 otherwise
                     error('Unknown Integration Method');
             end
@@ -179,16 +213,31 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             end
             % Add in the complementarity constriants
             obj = obj.addContactConstraints();
+            % Add constraints on the time steps
+            if obj.options.time_option == 2
+               obj = obj.addTimeStepConstraints(); 
+            end
         end   
         function obj = addContactConstraints(obj)
+            
             nX = obj.plant.getNumStates();
-            for i = 1:obj.N - 1
-                % Add in the nonlinear complementarity constraints
-                nlc_cstr = NonlinearComplementarityConstraint_original(@obj.contact_constraint_fun, nX, obj.numContacts * (2 + obj.numFriction), obj.options.nlcc_mode, obj.options.compl_slack);
-                %ncp_cstr = NonlinearComplementarityConstraint(@contat_constraint_fun, nX, obj.numContacts*(2+obj.numFriction), obj.options.nlcc_mode);
-                obj = obj.addConstraint(nlc_cstr, [obj.x_inds(:,i+1); obj.lambda_inds(:,i)]);
+            % NC Constraint with no slack variables - original constraint
+            nlc_cstr = RelaxedNonlinearComplementarityConstraint(@obj.contact_constraint_fun, nX, obj.numContacts * (2 + obj.numFriction), obj.options.nlcc_mode, obj.options.compl_slack);
+            if obj.options.nlcc_mode == 5
+                % Relaxed NC Constraints
+                for i = 1:obj.N - 1
+                    obj = obj.addConstraint(nlc_cstr, [obj.x_inds(:,i+1); obj.lambda_inds(:,i); obj.relax_inds(i)]);
+                end
+                % Add the cost for the relaxation
+                obj = obj.addCost(FunctionHandleObjective(obj.N-1, @(x) obj.relaxed_nc_cost(x)), obj.relax_inds);
+            else
+                % Strict NC Constraints
+                for i = 1:obj.N - 1
+                    obj = obj.addConstraint(nlc_cstr, [obj.x_inds(:,i+1); obj.lambda_inds(:,i)]);
+                end
             end
-        end
+            
+         end
         function obj = addRunningCost(obj, running_cost_function)
            %% addRunningCost: add the running cost function as the objective
            %
@@ -214,8 +263,61 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                     otherwise
                         error('Unknown integration method');
                 end
-                
+                running_cost = running_cost.setName(sprintf('RunningCost'));
                 obj = obj.addCost(running_cost,inds_i);
+            end
+        end
+        function obj = addTimeStepConstraints(obj)
+            %% Add Timestep Constriants: Adds constraints to the values of the timesteps
+            %   addTimeStepConstraints can add the following constraints:
+            %       1. No Constriants: each timestep can be any nonnegative
+            %       number
+            %       2. Pairwise constriants: every two timesteps must have
+            %       the same total duration, although that duration is not
+            %       specified
+            %       3. Bounded Constriants: every timestep must be between
+            %       two values calculated from the number of knot points
+            %       and the total duration of the problem.
+            
+            switch obj.options.time_constraints
+                case ContactImplicitTrajectoryOptimizer.FREETIME
+                    % There are no constraints on time.
+                case ContactImplicitTrajectoryOptimizer.PAIRWISETIME
+                    % Pairwise time constraints specify that every two
+                    % steps must have the same collective duration
+                    
+                    % Add pairwise constraints over the timesteps
+                    Ncol = obj.N-1;
+                    Nrow = floor((obj.N-3)/2);
+                    % Create a linear constraint matrix
+                    A = zeros(Nrow, Ncol);
+                    for n = 1:Nrow
+                        A(n, 2*(n-1)+1:2*(n+1)) = [1, 1, -1, -1];
+                    end
+                    if rem(Ncol, 2) ~= 0
+                        % Add an additional row if N is odd
+                        A = [A; zeros(1, Ncol)];
+                        A(end, end - 2:end) = [1, 1, -1];
+                    end
+                    % Create a linear constraint
+                    cstr = LinearConstraint(zeros(1,size(A,1)), zeros(1,size(A,1)), A);
+                    cstr = cstr.setName(sprintf('PairwiseTimeConstraints'));
+                    % Add the constraint to the problem
+                    obj = obj.addConstraint(cstr, obj.h_inds);
+                case ContactImplicitTrajectoryOptimizer.BOUNDTIME
+                    % Calculate the necessary timestep for the minimum
+                    % duration
+                    dt_min = obj.options.duration(1)/(obj.N - 1);
+                    % Calculate the necessary timestep for the maximum duration
+                    dt_max = obj.options.duration(2)/(obj.N - 2);
+                    % Let the bounds be 50% the min and 150% the max
+                    cstr = BoundingBoxConstraint(0.5*dt_min*ones(1,obj.N-1), 1.5*dt_max*ones(1,obj.N-1));
+                    cstr = cstr.setName(sprintf('BoundedTimestepConstriants'));
+                    % Place the constraint over the timesteps
+                    obj = obj.addConstraint(cstr, obj.h_inds);
+                otherwise
+                    % No Constraints
+                    error('Unrecognized timestep constraint method');
             end
         end
     end
@@ -551,7 +653,6 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dg = h * df;
             dg(:,1) = dg(:,1) + f;
         end
-        
         function [f, df] = contact_constraint_fun(obj, y)
             %% CONTACT_CONSTRAINT_FUN: Function evaluating the contact nonlinear complementarity function
             %
@@ -636,6 +737,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         function obj = addDisplayFunction(obj, display_fun)
            %% AddDisplayFunction: Overloads the native addDisplayFunction to split the decision variables into separate inputs
            obj = addDisplayFunction@NonlinearProgram(obj, @(z)display_fun(z(obj.h_inds), z(obj.x_inds), z(obj.u_inds), z(obj.lambda_inds))); 
+        end
+    end
+    methods (Access = protected)
+        function [f, df] = relaxed_nc_cost(obj, x)
+            % scaledSumCost: 
+            f = obj.options.relax_cost * sum(x(:));
+            df = obj.options.relax_cost * ones(1, numel(x));
         end
     end
 end

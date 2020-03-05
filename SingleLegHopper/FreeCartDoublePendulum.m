@@ -24,6 +24,7 @@ methods
         %   Center of Mass ratios CoM (2x1 positive, between 0 and 1), and moments of
         %   inertia for the rods INERTIAS (2x1 positive)
         
+
         
         if nargin > 0
             if ~isempty(varargin{1})

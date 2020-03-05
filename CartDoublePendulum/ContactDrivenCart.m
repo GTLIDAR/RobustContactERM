@@ -70,7 +70,7 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             obj = obj@Manipulator(nQ, nU);
             % Optionally set control limits (uncomment to include control
             % limits)
-%             obj = setInputLimits(obj,-15,15);
+            %obj = setInputLimits(obj,-50,50);
         end 
 
     end
@@ -475,6 +475,10 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
            beta = atan2(r(1), r(2));
            alpha = atan2(obj.lengths(2)*sin(q(3)),  obj.lengths(1) + obj.lengths(2)*cos(q(3)));
            q(2) = pi - (beta + alpha);
+        end
+        
+        function m = totalMass(obj)
+           m = obj.blockMass + sum(obj.masses); 
         end
     end
 end

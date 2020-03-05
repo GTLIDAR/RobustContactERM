@@ -277,10 +277,10 @@ classdef DifferentiableContactDynamics
             w = zeros(numN,numT);
             
             for n = 1:numN
-                w(n,numT*(n-1)+1:numT*n) = 1;
+                w(n,numT/numN*(n-1)+1:numT/numN*n) = 1;
             end
             Jr = Jc/R;            
-            P(1:numN + numT, 1:numN + numT) = obj.timestep * Jr * Jr';
+            P(1:numN + numT, 1:numN + numT) = obj.timestep * (Jr * Jr');
             P(numN+1:numN+numT, numN+numT+1:end) = w';
             P(numN + numT+1:end,1:numN) = eye(numN) * obj.terrain.friction_coeff;
             P(numN+numT+1:end,numN+1:numN+numT) = -w;
@@ -349,7 +349,7 @@ classdef DifferentiableContactDynamics
            end
            
            % Calculate the alpha values
-           phi = N' * (xA - xB);
+           phi = N' * (xA - xB);    %Signed distance function
            alphas = Jn * q - phi;
         end
                 
@@ -397,7 +397,7 @@ classdef DifferentiableContactDynamics
             D{2} = -D{1};
             % Calculate dN and dD by contraction with dJacobian
             dN = zeros(numel(N), numel(q));
-            dD = cell(2);
+            dD = cell(2,1);
             dD{1} = zeros(numel(D{1}),numel(q));
             dD{2} = dD{1};
             for n = 1:numel(q)

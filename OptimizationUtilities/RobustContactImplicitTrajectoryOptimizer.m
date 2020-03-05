@@ -9,12 +9,17 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
         % DISTRIBUTION
         GAUSSIAN = 1;    % Use the Gaussian distribution over the unknowns
         LOGISTIC = 2;    % Use the Logistic distribution over the unknowns
-        % RESIDUAL FUNCTION
-        NONE = 1;        % Use the traditional nonlinear complementarity solveriplier
-        MIN = 2;         % Use a min function as the solver - DO NOT USE
+        % SCALING
+        NOSCALE = 0;
+        CONSTANT = 1;
+        INERTIA = 2;
+        % ERM MODE
+        ERM_COMBINED = 1;
+        ERM_SEPARATED = 2;
     end
     properties
         ermCost;    % Function handle to switch between distributions
+        distance_slacks;
     end
     
     methods
@@ -37,9 +42,6 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             if ~isfield(options, 'uncertainty_source')
                 options.uncertainty_source = RobustContactImplicitTrajectoryOptimizer.NO_UNCERTAINTY;
             end
-            if ~isfield(options, 'complementarity_solver')
-                options.complementarity_solver = RobustContactImplicitTrajectoryOptimizer.NONE;
-            end
             % Check for nominal values of the friction and height variances
             if ~isfield(options, 'frictionVariance')
                 options.frictionVariance = 1;
@@ -55,7 +57,14 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             if ~isfield(options, 'distribution')
                 options.distribution = RobustContactImplicitTrajectoryOptimizer.GAUSSIAN;
             end
-            
+            % Check for ERM Scaling
+            if ~isfield(options, 'ermScaling')
+               options.ermScaling = RobustContactImplicitTrajectoryOptimizer.NOSCALE; 
+            end
+            % Check for the ERM Cost Method
+            if ~isfield(options, 'ermMode')
+                options.ermMode = RobustContactImplicitTrajectoryOptimizer.ERM_COMBINED;
+            end
             % Pass construction to the parent class
             obj = obj@ContactImplicitTrajectoryOptimizer(plant, N, duration, options);
         end
@@ -73,7 +82,6 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             %    -1: Unknown (default)
             %     0: No user gradients
             %     1: First derivatives provided
-            grad_level = 1;
             
             % Set the handle to the ERM Cost function
             switch obj.options.distribution
@@ -90,108 +98,43 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                     error('Unrecognized distribution');
             end
             
-            nX = obj.plant.getNumStates();
-            nL = obj.numContacts * (2 + obj.numFriction);
-            
-            % Initialize the index sets
-            frictionIdx = cell(1, obj.N-1);
-            slidingIdx = frictionIdx;
-            distanceIdx = frictionIdx;
-            
-            switch obj.options.complementarity_solver
-                case RobustContactImplicitTrajectoryOptimizer.NONE
-                    % Add the sliding constraint
-                    sliding = NonlinearComplementarityConstraint_original(@obj.slidingVelocityConstraint, nX+2*obj.numContacts, obj.numContacts*obj.numFriction, obj.options.nlcc_mode);
-                    addSliding = @(obj, c) addConstraint(obj, sliding, c);
-                    
-                    % Normal Distance Constraint
-                    distance = NonlinearComplementarityConstraint_original(@obj.normalDistanceConstraint, nX, obj.numContacts, obj.options.nlcc_mode);
-                    addDistance = @(obj, c) addConstraint(obj, distance, c);
-                    
-                    % Friction Cone Contraint
-                    friction = NonlinearComplementarityConstraint_original(@obj.frictionConeConstraint, obj.numContacts*(1+obj.numFriction), obj.numContacts, obj.options.nlcc_mode);
-                    addFriction = @(obj, c) addConstraint(obj, friction, c);
-                    
-                    % Create the index sets
-                    for i = 1:obj.N-1
-                        % Reshape all the lambda_inds so the forces are grouped together as [normal, tangential, slack]
-                        lam_ind = obj.force_converter'*obj.lambda_inds(:,i);
-                        frictionIdx{i} =  lam_ind;
-                        slidingIdx{i} = [obj.x_inds(:,i+1); lam_ind(1:obj.numContacts); lam_ind(obj.numContacts*(1+obj.numFriction)+1:end); lam_ind(obj.numContacts+1:obj.numContacts*(1+obj.numFriction))];
-                        distanceIdx{i} = [obj.x_inds(:,i+1); lam_ind(1:obj.numContacts)];
-                    end
-                    
-                case RobustContactImplicitTrajectoryOptimizer.MIN
-                    %NOTE: MIN Currently does not return feasible solutions
-                    
-                    %Sliding constraint
-                    sliding = FunctionHandleObjective(nX+nL, @obj.slidingVelocityCost, grad_level);
-                    addSliding = @(obj, c) addCost(obj, sliding, c);
-                    
-                    % Normal Distance Constraint
-                    distance = FunctionHandleObjective(nX+obj.numContacts, @obj.normalDistanceCost, grad_level);
-                    addDistance = @(obj, c) addCost(obj, distance, c);
-                    
-                    % Friction Cone Constriant
-                    friction = FunctionHandleObjective(nX + nL, @obj.frictionConeCost, grad_level);
-                    addFriction = @(obj, c) addCost(obj, friction, c);
-                    
-                    % Create the index sets
-                    for i = 1:obj.N-1
-                        frictionIdx{i} = {obj.lambda_inds(:,i)};
-                        slidingIdx{i} = {obj.x_inds(:,i+1); obj.lambda_inds(:,i)};
-                        distanceIdx{i} = {obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i)};
-                    end
-                    
-                otherwise
-                    error('Unrecognized complementarity solver option');
-            end
-            
             % Switch out the deterministic solvers for ERM solvers (if
             % necessary)
             switch obj.options.uncertainty_source
                 case RobustContactImplicitTrajectoryOptimizer.NO_UNCERTAINTY
-                    % Add deterministic costs for friction and distance - Do
-                    % Nothing
-                    
+                    % Add deterministic costs for friction distance, and
+                    % sliding
+                    obj = obj.addFrictionConstraint();
+                    obj = obj.addSlidingConstraint();
+                    obj = obj.addDistanceConstraint();
+                  
                 case RobustContactImplicitTrajectoryOptimizer.FRICTION_UNCERTAINTY
-                    % Add ERM cost for friction, NCP cost for distance
-                    friction = FunctionHandleObjective(nL ,@obj.frictionConeERMCost, grad_level);
-                    addFriction = @(obj, c) addCost(obj, friction, c);
-                    % Create the index sets
-                    for i = 1:obj.N-1
-                        frictionIdx{i} = {obj.lambda_inds(:,i)};
-                    end
-                    
+                    % Add ERM cost for friction, NCC for distance and
+                    % sliding
+                    obj = obj.addFrictionERM();
+                    obj = obj.addSlidingConstraint();
+                    obj = obj.addDistanceConstraint();
                     
                 case RobustContactImplicitTrajectoryOptimizer.DISTANCE_UNCERTAINTY
-                    % Add ERM cost for distance, NCP cost for friction
-                    distance = FunctionHandleObjective(nX + obj.numContacts, @obj.normalDistanceERMCost, grad_level);
-                    addDistance = @(obj, c) addCost(obj, distance, c);
-                    % Create the index sets
-                    for i = 1:obj.N-1
-                        distanceIdx{i} = {obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i)};
-                    end
+                    % Add ERM cost for distance, NCC for friction and
+                    % sliding
+                    obj = obj.addDistanceERM();
+                    obj = obj.addFrictionConstraint();
+                    obj = obj.addSlidingConstraint();
+     
                 case RobustContactImplicitTrajectoryOptimizer.COMBINED_UNCERTAINTY
-                    % Add ERM cost for distance and friction
-                    friction = FunctionHandleObjective(nL, @obj.frictionConeERMCost, grad_level);
-                    distance = FunctionHandleObjective(nX + obj.numContacts, @obj.normalDistanceERMCost, grad_level);
-                    addFriction = @(obj, c) addCost(obj, friction, c);
-                    addDistance = @(obj, c) addCost(obj, distance, c);
-                    % Create the index sets
-                    for i = 1:obj.N-1
-                        frictionIdx{i} = {obj.lambda_inds(:,i)};
-                        distanceIdx{i} = {obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i)};
-                    end
+                    % Add ERM cost for distance and friction, NCC for
+                    % sliding
+                    obj = obj.addDistanceERM();
+                    obj = obj.addFrictionERM();
+                    obj = obj.addSlidingConstraint();
                 otherwise
                     error('Unknown uncertainty source');
             end
-            
-            % Add all the costs/constraints to the problem
-            for i = 1:obj.N-1
-                obj = addFriction(obj, frictionIdx{i});
-                obj = addDistance(obj, distanceIdx{i});
-                obj = addSliding(obj, slidingIdx{i});
+            % Check for relaxed NC Constraints
+            if obj.options.nlcc_mode == 5
+               % Add in the relaxing variables as a cost
+               obj = obj.addCost(FunctionHandleObjective(obj.N-1, @(x) obj.relaxed_nc_cost(x)), obj.relax_inds);
             end
         end
     end
@@ -246,27 +189,6 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             [f, df] = obj.frictionConeDefect(lambda);
             % Re-order the columns of df
             df = df*obj.force_converter;
-        end
-        function [f, df] = frictionConeCost(obj, lambda)
-            %% FrictionConeCost: Cost Function for enforcing deterministic friction cone constraints
-            %
-            %
-            
-            [z, dz] = obj.frictionConeDefect(lambda);
-            
-            % Sliding velocity slack
-            nL = numel(lambda);
-            skip = 2 + obj.numFriction;
-            G_idx = skip:skip:nL;
-            gamma = lambda(G_idx);
-            % Get the NCP function variables and their gradients
-            dgamma = zeros(obj.numContacts, nL);
-            dgamma(:,G_idx) = eye(obj.numContacts);
-            % Get the NCP function residuals and their gradient
-            [f, df] = obj.ncpResiduals(gamma, z, dgamma, dz);
-            % Sum the cost and gradients over all contacts
-            f = obj.options.contactCostMultiplier * sum(f, 1);
-            df = obj.options.contactCostMultiplier * sum(df, 1);
         end
         function [f, df] = frictionConeERMCost(obj, lambda)
             %% FRICTIONCONEERMCOST: Expected Residual for uncertain friction cones
@@ -331,47 +253,56 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             [f, df] = obj.normalDistanceDefect(x);
             df = [df, zeros(obj.numContacts)];
         end
-        function [f, df] = normalDistanceCost(obj, x1, lambda)
-            %% NormalDistanceCost: Objective function for the nonpenetration constraint
-            %
-            %   [f, df] = normalDistanceCost(obj, x, lambda) calculates
-            %   the objective f for the nonpenetration constraint, given
-            %   the current state x1 and the normal force LAMBDA.
-            %
-            %   normalDistanceCost uses a residual function to calculate
-            %   the objective f. The residual function is specified such
-            %   that it attains a root when the complementarity conditions
-            %   are satisfied:
-            %
-            %       f(a, b) = 0 iff  a >= 0, b>= 0, ab = 0
-            %
-            %   the function also returns the derivatives of the objective
-            %   with respect to the state X and the normal force LAMBDA:
-            %       df = [df/dx, df/dlambda]
-            %
-            %   Here, we only need the normal force variables, i.e.
-            %   lambda = lambda_N
+        function [phi, lambda_s, dphi, dlambda_s] = getNormalDistanceERMVariables(obj, h, x, lambda)
+            %% getNormalDistanceERMVariables: shared function for calculating the ERM Variables (with scaling)
             
-            % Get the normal distance and its gradient
-            [z, dz] = obj.normalDistanceDefect(x1);
-            % Expand to include derivatives wrt lambda
-            nQ = obj.plant.getNumPositions();
             nX = obj.plant.getNumStates();
+            nQ = obj.plant.getNumPositions();
             nL = numel(lambda);
-            dz = [dz, zeros(obj.numContacts, nQ + nL)];
+            % Get the normal distance and its gradient
+            [phi, ~, ~, ~, ~, ~, ~, ~, Jn, ~, dJn] = obj.plant.contactConstraints(x(1:nQ), false, obj.options.active_collision_options);
+            % Expand the derivative of the distance
+            dphi = [zeros(obj.numContacts, 1), Jn, zeros(obj.numContacts, nQ + nL)];
             
-            % Calculate the derivatives
-            dlambda = zeros(obj.numContacts, nX + nL);
-            dlambda(:, nX +1:end) = eye(obj.numContacts);
+            % Apply Scaling, if desired
+            switch obj.options.ermScaling
+                case RobustContactImplicitTrajectoryOptimizer.CONSTANT
+                    % Scale the contact force by the total mass and the timestep
+                    m = obj.plant.totalMass();
+                    lambda_s = h^2 * lambda/m;
+                    dlambda_s = [2*h * lambda / m, zeros(obj.numContacts, nX), h^2/m];
+                    
+                case RobustContactImplicitTrajectoryOptimizer.INERTIA
+                    % Calculate the effective inertia
+                    [M, ~, ~, dM] = obj.plant.manipulatorDynamics(x(1:nQ), x(nQ+1:end));
+                    R = chol(M);
+                    Jr = Jn/R;
+                    % Scale the force
+                    S = Jr * Jr';                   % Mass scale matrix (inverse matrix in normal coordinates)
+                    lambda_s = h.^2 * S * lambda;   % Eliminate mass and time units
+                    
+                    % Calculate the derivatives of the scaling matrix
+                    dM = reshape(dM', nQ*[1,1,1]);
+                    dJn = reshape(dJn', [obj.numContacts, nQ, nQ]);
+                    diM = zeros(nQ*[1, 1, 1]);
+                    dS = zeros(nL, nL, nQ);
+                    for n = 1:nQ
+                        diM(:,:,n) = -((R\(R'\dM(:,:,n)))/R)/R';
+                        dS(:,:,n) = dJn(:,:,n) * (R\Jr') + Jn * diM(:,:,n) * Jn' + (Jr/R') * dJn(:,:,n)';
+                    end
+                    dS_l = sum(dS .* lambda', 2);
+                    dS_l = reshape(dS_l, size(dS_l, 1), size(dS_l, 3));
+                    
+                    dlambda_s = [2 * h * S * lambda, h^2 * dS_l, zeros(obj.numContacts, nQ), h^2 * S];
+                    
+                otherwise
+                    % No scaling
+                    lambda_s = lambda;
+                    dlambda_s = [zeros(obj.numContacts,1),zeros(obj.numContacts, nX), eye(obj.numContacts)];
+            end
             
-            % Use the NCP function to get the elementwise residuals
-            [f, df] = obj.ncpResiduals(z, lambda, dz, dlambda);
-            
-            % Sum the residuals and gradients together for the final cost
-            f = obj.options.contactCostMultiplier * sum(f, 1);
-            df = obj.options.contactCostMultiplier * sum(df, 1);
         end
-        function [f, df] = normalDistanceERMCost(obj, x1, lambda)
+        function [f, df] = normalDistanceERMCost(obj, h, x, lambda)
             %% NormalDistanceERMCost: Objective function for the nonpenetration constraint under the ERM model
             %
             %   [f, df] = normalDistanceERMCost(obj, x, lambda) calculates
@@ -385,38 +316,82 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             %
             %   Here, we only need the normal force variables, i.e.
             %   lambda = lambda_N
-                       
-            % Get the normal distance and its gradient
-            [z, dz] = obj.normalDistanceDefect(x1);
             
-            % Expand to include derivatives wrt lambda
-            nX = obj.plant.getNumStates();
-            nL = numel(lambda);
-            dz = [dz, zeros(obj.numContacts, nL)];         
-            
-            % Get the normal force
-            dlambda = zeros(obj.numContacts, nX + nL);
-            dlambda(:, nX + 1:end) =  eye(obj.numContacts);
+            % Get the ERM variables (possibly scaled) and their derivatives
+            [phi, lambda_s, dphi, dlambda_s] = obj.getNormalDistanceERMVariables(h, x, lambda);
             
             % Calculate the variance of the ERM
             sigma = ones(obj.numContacts, 1) * obj.options.heightVariance;
-            dsigma = zeros(obj.numContacts, nX + nL);
+            dsigma = zeros(obj.numContacts,1 + numel(x) + numel(lambda));
             
             % Calculate the erm Cost
-            [f, df_lambda, df_z, df_sigma] = obj.ermCost(lambda, z, sigma);
+            [f, df_lambda_s, df_phi, df_sigma] = obj.ermCost(lambda_s, phi, sigma);
             
             % Calculate the total differential cost
-            df = df_lambda * dlambda + df_z * dz + df_sigma * dsigma;
+            df = df_lambda_s * dlambda_s + df_phi * dphi + df_sigma * dsigma;
             % Sum over all contacts
             f = obj.options.contactCostMultiplier * sum(f, 1);
             df = obj.options.contactCostMultiplier * sum(df, 1);
             
         end
+        function [f, df] = normalDistanceERMSeparated(obj, w)
+            %% normalDistanceERMSeparated: Wrapper Function for the ERM Cost when using the Separated Form
+            %
+            %   Arguments:
+            %       OBJ:
+            %       z: the slack variables, ordered as [phi, lambdaN]
+            %
+            %   Return Values
+            %       f: ERM Cost evaluation
+            %       df: Gradient of ERM Cost wrt z
+            
+            % ERM Variables
+            mu = w(1:obj.numContacts);
+            x = w(obj.numContacts+1:end);
+            sigma = ones(obj.numContacts,1) * obj.options.heightVariance;  
+            % ERM Variable Gradients (wrt z)
+            dmu = [eye(numel(mu)), zeros(obj.numContacts, numel(x))];
+            dx = [zeros(obj.numContacts, numel(mu)), eye(numel(x))];
+            dsigma = zeros(obj.numContacts, numel(w));
+            % Calculate the ERM Cost
+            [f, df_x, df_mu, df_sigma] = obj.ermCost(x, mu, sigma);
+            df = df_x * dx + df_mu * dmu + df_sigma * dsigma;
+            % Sum over the ERM Cost terms
+            f = sum(f, 1);
+            df = sum(df, 1);
+        end
+        function [f, df] = normalDistanceERMSeparatedConstraint(obj,y)
+            %% normalDistanceERMSeparatedConstraint: Constraint Enforcing the Slack Variables equal the regular decision variables
+            %
+            %   normalDistanceERMSeparatedConstraint returns the constraint
+            %   evaluation which enforces the ERM Slack variables be equal
+            %   to their true values.
+            %
+            %   Arguments:
+            %       y = [h, x, lambda, w]
+            
+            h = y(1);
+            x = y(2:1+obj.plant.getNumStates);
+            lambda = y(2+obj.plant.getNumStates:1 + obj.plant.getNumStates + obj.numContacts);
+            w = y(2+obj.plant.getNumStates+obj.numContacts:end);
+            % Get the ERM Variables
+            [phi, lambda_s, dphi, dlambda_s] = obj.getNormalDistanceERMVariables(h, x, lambda);
+            % The constraint is the difference between the slack and ERM
+            % variables
+            f_p = w(1:numel(phi)) - phi;
+            f_l = w(numel(phi)+1:end) - lambda_s;
+            % Gradients
+            df_p = [-dphi, eye(numel(f_p)), zeros(numel(f_p))];
+            df_l = [-dlambda_s, zeros(numel(f_l)), eye(numel(f_l))];
+            % Combine the results
+            f = [f_p; f_l];
+            df = [df_p; df_l];
+        end
         %% ---------------- SLIDING VELOCITY --------------- %%
         function [f, df] = slidingVelocityDefect(obj, x1, lambda)
             
             
-            % Get the Tangential Friction Basisiplier
+            % Get the Tangential Friction Basis
             nX = obj.plant.getNumStates();
             nQ = obj.plant.getNumPositions();
             q = x1(1:nQ);
@@ -439,8 +414,8 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             f = zeros(obj.numContacts * obj.numFriction, 1);
             df = zeros(obj.numContacts * obj.numFriction, nX + nL);
             for n = 1:obj.numContacts
-                % Indices for the current force variablesiplier
-                rangeIdx = obj.numFriction * (n-1) + 1 : obj.numFriction * n;
+                % Indices for the current force variable
+                rangeIdx = obj.numFriction * (n-1) + 1 : (obj.numFriction * n);
                 % NCP Variables
                 f(rangeIdx) = gamma(n) + Jt(:,:,n) * dq;
                 dJt_dq = squeeze(sum(dJt(:,:,:,n) .* dq', 2));
@@ -491,6 +466,122 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
         end
     end
     
+    methods (Access = protected)
+        function obj = addDistanceERM(obj)
+            %% addDistanceERM: add the ERM cost for uncertain terrain height to the problem
+            
+            grad_level = 1; % Gradients are provided
+            switch obj.options.ermMode
+                case RobustContactImplicitTrajectoryOptimizer.ERM_COMBINED
+                    % Add ERM cost for distance
+                    
+                    % Create the distance objective
+                    distance = FunctionHandleObjective(1 + obj.plant.getNumStates() + obj.numContacts, @obj.normalDistanceERMCost, grad_level);
+                    distance = distance.setName(sprintf('DistanceERMCost'));
+                    
+                    % Add bounding box constraints on the normal force
+                    nonneg = BoundingBoxConstraint(zeros(obj.numContacts, 1), inf(obj.numContacts,1));
+                    nonneg = nonneg.setName(sprintf('NormalForceNonnegativeConstraint'));
+                    % Add the objective at every point
+                    for i = 1:obj.N-1
+                        distanceIdx = {obj.h_inds(i); obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i)};
+                        % Add a nonnegativity constraint on lambdaN
+                        obj = obj.addConstraint(nonneg, obj.lambda_inds(obj.normal_inds,i));
+                        obj = obj.addCost(distance, distanceIdx);
+                    end
+                case RobustContactImplicitTrajectoryOptimizer.ERM_SEPARATED
+                    % Add ERM cost for distance using slack variables in
+                    % the ERM objective
+                    distance = FunctionHandleObjective(2*obj.numContacts, @obj.normalDistanceERMSeparated, grad_level);
+                    distance = distance.setName(sprintf('DistanceERMCost'));
+                    cstr_dim = 1 + obj.plant.getNumStates() + obj.numContacts + 2*obj.numContacts;
+                    cstr = FunctionHandleConstraint(zeros(2*obj.numContacts,1), zeros(2*obj.numContacts,1), cstr_dim, @obj.normalDistanceERMSeparatedConstraint);
+                    cstr = cstr.setName(sprintf('DistanceERMSlackConstraint'));
+                    % Add additional variables to the problem
+                    [obj, inds] = obj.addDecisionVariable(2*(obj.N-1)*obj.numContacts); %This adds a lot of decision variables
+                    obj.distance_slacks = reshape(inds, 2*obj.numContacts, obj.N-1);
+                    % Set the constraints
+                    for i = 1:obj.N - 1
+                       % Add the distance cost
+                       obj = obj.addCost(distance, obj.distance_slacks(:,i));
+                       % Add the slack constraint
+                       slackIdx = [obj.h_inds(i); obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds, i); obj.distance_slacks(:,i)];
+                       obj = obj.addConstraint(cstr, slackIdx);
+                    end
+                otherwise
+                    error('ERM MODE not recognized');
+            end
+        end
+        function obj = addFrictionERM(obj)
+            %% addFrictionERM: add the ERM cost for uncertain friction coefficient to the problem
+            
+            % Add ERM cost for friction, NCP cost for distance
+            grad_level = 1;
+            nL = obj.numContacts * (2 + obj.numFriction);
+            friction = FunctionHandleObjective(nL ,@obj.frictionConeERMCost, grad_level);
+            friction = friction.setName(sprintf('FrictionERMCost'));
+            % Add the objective at every point
+            for i = 1:obj.N-1
+                frictionIdx = obj.lambda_inds(:,i);
+                obj = obj.addCost(friction, frictionIdx);
+            end
+        end
+        function obj = addSlidingConstraint(obj)
+            %% addSlidingConstraint: adds the complementarity constraint for sliding velocity to the problem
+            % Create a Comlementarity Constraint for sliding
+            sliding = RelaxedNonlinearComplementarityConstraint(@obj.slidingVelocityConstraint, obj.plant.getNumStates()+2*obj.numContacts, obj.numContacts*obj.numFriction, obj.options.nlcc_mode, obj.options.compl_slack);
+            for n = 1:length(sliding.constraints)
+                sliding.constraints{n} = sliding.constraints{n}.setName(sprintf('SlidingVelocityConstraint'));
+            end
+            % Add the constraint at every knot point
+            for i = 1:obj.N-1
+                % Order the indices such that the argument is 
+                %   [x, lambdaN, gamma, lambdaT]
+                if obj.options.nlcc_mode == 5
+                    slidingIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds, i); obj.lambda_inds(obj.gamma_inds, i); obj.lambda_inds(obj.tangent_inds, i); obj.relax_inds(i)];
+                else
+                    slidingIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds, i); obj.lambda_inds(obj.gamma_inds, i); obj.lambda_inds(obj.tangent_inds, i)];
+                end
+                obj = obj.addConstraint(sliding, slidingIdx);
+            end
+        end
+        function obj = addFrictionConstraint(obj)
+            %% addFrictionConstraint: adds the complementarity constraint for the friction cone to the optimization problem
+            % Create a complementarity constraint for the friction cone
+             friction = RelaxedNonlinearComplementarityConstraint(@obj.frictionConeConstraint, obj.numContacts*(1+obj.numFriction), obj.numContacts, obj.options.nlcc_mode, obj.options.compl_slack);
+             for n = 1:length(friction.constraints)
+                friction.constraints{n} = friction.constraints{n}.setName(sprintf('FrictionConeConstraint')); 
+             end
+             % Add the constraint to every knot point                   
+             for i = 1:obj.N-1
+                 % Reshape all the lambda_inds so the forces are grouped together as [normal, tangential, slack]
+                 if obj.options.nlcc_mode == 5
+                     frictionIdx =  [obj.lambda_inds(obj.normal_inds,i); obj.lambda_inds(obj.tangent_inds,i); obj.lambda_inds(obj.gamma_inds,i); obj.relax_inds(i)];
+                 else
+                     frictionIdx =  [obj.lambda_inds(obj.normal_inds,i); obj.lambda_inds(obj.tangent_inds,i); obj.lambda_inds(obj.gamma_inds,i)];
+                 end
+                 obj = obj.addConstraint(friction, frictionIdx);
+             end
+        end
+        function obj = addDistanceConstraint(obj)
+            %% addDistanceConstraint: adds the complementarity constraint for normal distance to the optimization problem 
+            % Create a complementarity constraint for the normal distance
+            distance = RelaxedNonlinearComplementarityConstraint(@obj.normalDistanceConstraint, obj.plant.getNumStates(), obj.numContacts, obj.options.nlcc_mode, obj.options.compl_slack);
+            for n = 1:length(distance.constraints)
+                 distance.constraints{n} = distance.constraints{n}.setName(sprintf('NormalDistanceConstraint'));
+            end
+            % Add the constraint at every knot point
+            for i = 1:obj.N-1
+                % For distance, we only need [x, lambdaN];
+                if obj.options.nlcc_mode == 5
+                    distanceIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i); obj.relax_inds(i)];
+                else
+                    distanceIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i)];
+                end
+                obj = obj.addConstraint(distance, distanceIdx);
+            end
+        end
+    end
     methods
         function obj = enableDisplayFunction(obj)
             %% ENABLEDISPLAYFUNCTION: Enables the native display function
@@ -508,7 +599,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 iteration = 1;
                 fprintf('\n');
             end
-            [runningCost, dynamicCstr, distanceCost, frictionCost, slidingCost] = obj.calculateCosts(h, x, t, u, l);       
+            [runningCost, dynamicCstr, distanceCost, frictionCost, slidingCost] = obj.calculateCosts(h, x, u, l);       
             % Print the values to the screen
             if rem(iteration, 100) == 1
                 % Every 50 iterations, re-print the titlesiplier
@@ -527,57 +618,68 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 case RobustContactImplicitTrajectoryOptimizer.FRICTION_UNCERTAINTY
                     for n = 1:obj.N-1
                         frictionCost = frictionCost + obj.frictionConeERMCost(l(:,n));
-                        distanceCost = distanceCost + norm(obj.normalDistanceConstraint([x(:,n+1), l(obj.normal_inds, n)]));
+                        distanceCost = distanceCost + norm(obj.normalDistanceConstraint([x(:,n+1); l(obj.normal_inds, n)]));
                         slidingCost = slidingCost + norm(obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]));
                     end
                 case RobustContactImplicitTrajectoryOptimizer.DISTANCE_UNCERTAINTY
                     for n = 1:obj.N-1
-                        distanceCost = distanceCost + obj.normalDistanceERMCost(x(:,n+1), l(obj.normal_inds, n));
+                        distanceCost = distanceCost + obj.normalDistanceERMCost(h(n), x(:,n+1), l(obj.normal_inds, n));
                         frictionCost = frictionCost + norm(obj.frictionConeConstraint([l(obj.normal_inds, n); l(obj.tangent_inds,n); l(obj.gamma_inds, n)]));
                         slidingCost = slidingCost + norm(obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]));
                     end
                 case RobustContactImplicitTrajectoryOptimizer.COMBINED_UNCERTAINTY
                     for n = 1:obj.N-1
                         frictionCost = frictionCost + obj.frictionConeERMCost(l(:,n));
-                        distanceCost = distanceCost + obj.normalDistanceERMCost(x(:,n+1), l(obj.normal_inds, n));
+                        distanceCost = distanceCost + obj.normalDistanceERMCost(h(n), x(:,n+1), l(obj.normal_inds, n));
                         slidingCost = slidingCost + norm(obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]));
                     end
                 otherwise
                     for n = 1:obj.N-1
                         frictionCost = frictionCost + norm(obj.frictionConeConstraint([l(obj.normal_inds, n); l(obj.tangent_inds,n); l(obj.gamma_inds, n)]));
-                        distanceCost = distanceCost + norm(obj.normalDistanceConstraint([x(:,n+1), l(obj.normal_inds, n)]));
+                        distanceCost = distanceCost + norm(obj.normalDistanceConstraint([x(:,n+1); l(obj.normal_inds, n)]));
                         slidingCost = slidingCost + norm(obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]));
                     end
             end
+ 
             % Calculate the total cost functional (control objective)
             runningCost = 0;
             dynamicCstr = 0;
             switch obj.options.integration_method
                 case RobustContactImplicitTrajectoryOptimizer.FORWARD_EULER
-                    for n = 1:obj.N-1
-                       runningCost = runningCost + h(n)*obj.cost_handle(h(n),x(:,n),u(:,n)); 
-                       dynamicCstr = dynamicCstr + norm(obj.forward_constraint_fun(h(n), x(:,n), x(:,n+1), u(:,n), l(obj.force_inds,n)));
+                    if isempty(obj.cost_handle)
+                        obj.cost_handle = @(h, x, u) zeros(1);
                     end
-                case RobustContactImplicitTrajectoryOptimizer.BACKWARD_EULER
-                    for n = 1:obj.N-1
-                       runningCost = runningCost + h(n)*obj.cost_handle(h(n), x(:, n+1), u(:, n)); 
-                       dynamicCstr = dynamicCstr + norm(obj.forward_constraint_fun(h(n), x(:,n), x(:,n+1), u(:,n), l(obj.force_inds,n)));
-                    end
-                case RobustContactImplicitTrajectoryOptimizer.MIDPOINT
-                    for n = 1:obj.N-1
-                        runningCost = runningCost + h(n)*obj.midpoint_running_fun(@obj.cost_handle, h(n), x(:,n), x(:,n+1), u(:,n), u(:, n+1));
-                        dynamicCstr = dynamicCstr + norm(obj.forward_constraint_fun(h(n), x(:,n), x(:,n+1), u(:,n), u(:,n+1), l(obj.force_inds,n)));
-                    end
-                case RobustContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
                     for n = 1:obj.N-1
                         runningCost = runningCost + h(n)*obj.cost_handle(h(n),x(:,n),u(:,n));
                         dynamicCstr = dynamicCstr + norm(obj.forward_constraint_fun(h(n), x(:,n), x(:,n+1), u(:,n), l(obj.force_inds,n)));
                     end
-            end     
+                case RobustContactImplicitTrajectoryOptimizer.BACKWARD_EULER
+                    if isempty(obj.cost_handle)
+                        obj.cost_handle = @(h, x, u) zeros(1);
+                    end
+                    for n = 1:obj.N-1
+                        runningCost = runningCost + h(n)*obj.cost_handle(h(n), x(:, n+1), u(:, n));
+                        dynamicCstr = dynamicCstr + norm(obj.backward_constraint_fun(h(n), x(:,n), x(:,n+1), u(:,n), l(obj.force_inds,n)));
+                    end
+                case RobustContactImplicitTrajectoryOptimizer.MIDPOINT
+                    if isempty(obj.cost_handle)
+                        obj.cost_handle = @(h, x1, x2, u1, u2) zeros(1);
+                    end
+                    for n = 1:obj.N-1
+                        runningCost = runningCost + h(n)*obj.midpoint_running_fun(@obj.cost_handle, h(n), x(:,n), x(:,n+1), u(:,n), u(:, n+1));
+                        dynamicCstr = dynamicCstr + norm(obj.midpoint_constraint_fun(h(n), x(:,n), x(:,n+1), u(:,n), u(:,n+1), l(obj.force_inds,n)));
+                    end
+                case RobustContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
+                    if isempty(obj.cost_handle)
+                        obj.cost_handle = @(h, x, u) zeros(1);
+                    end
+                    for n = 1:obj.N-1
+                        runningCost = runningCost + h(n)*obj.cost_handle(h(n),x(:,n),u(:,n));
+                        dynamicCstr = dynamicCstr + norm(obj.semiimplicit_constraint_fun(h(n), x(:,n), x(:,n+1), u(:,n), l(obj.force_inds,n)));
+                    end
+            end
         end
-    end
-    
-    
+    end 
     methods (Static)
         function [f, df] = ncpResiduals(x, y, dx, dy)
             %% NCPRESIDUALS: Nonlinear complementarity problem function evaluation
