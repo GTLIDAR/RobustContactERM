@@ -15,7 +15,7 @@ classdef utilities
                 w = VideoWriter(savename);
                 open(w);
             end
-            
+            pause(1);
             % Draw all the components of the trajectory first
             T = size(seq, 2);
             data = cell(1,T);
@@ -59,6 +59,7 @@ classdef utilities
             % Now draw all the frames in sequence and create a video
             for n = 1:T
                set(sketch, 'XData',data{n}(1,:),'YData',data{n}(2,:));
+               set(ax,'XLimMode','manual','YLimMode','manual','xlim',xlims,'ylim',ylims);
                drawnow;
                if nargin == 4
                   writeVideo(w, getframe(ax));

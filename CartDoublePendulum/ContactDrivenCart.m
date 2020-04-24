@@ -108,7 +108,7 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
             g5 = (obj.masses(1)*obj.com(1)^2 + obj.masses(2))*obj.lengths(1)^2;
             % Calculate the diagonals of the mass matrix
             dM = [mT;
-                g5 + obj.inertias(1) + g3 + 2*g4*cos(q(3));
+                g5 + obj.inertias(1) + obj.inertias(2) + g3 + 2*g4*cos(q(3));
                 obj.inertias(2) + g3];
             % Calculate the upper triangle of the mass matrix
             M(1,3) = g2*cos(q(2) + q(3));

@@ -14,8 +14,13 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
         CONSTANT = 1;
         INERTIA = 2;
         % ERM MODE
-        ERM_COMBINED = 1;
+        ERM_OBJECTIVE = 1;
         ERM_SEPARATED = 2;
+        ERM_CONSTRAINT = 3;
+        ERM_COMBINED = 4;
+        % ERM SPACE SCALING
+        ERM_LINEARSPACE = 1;
+        ERM_LOGSPACE = 2;
     end
     properties
         ermCost;    % Function handle to switch between distributions
@@ -64,6 +69,14 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             % Check for the ERM Cost Method
             if ~isfield(options, 'ermMode')
                 options.ermMode = RobustContactImplicitTrajectoryOptimizer.ERM_COMBINED;
+            end
+            % Check for a distance scaling
+            if ~isfield(options, 'distanceScaling')
+               options.distanceScaling = 1; 
+            end
+            % Check for an ERM space scaling
+            if ~isfield(options, 'ermSpace')
+               options.ermSpace = RobustContactImplicitTrajectoryOptimizer.ERM_LINEARSPACE; 
             end
             % Pass construction to the parent class
             obj = obj@ContactImplicitTrajectoryOptimizer(plant, N, duration, options);
@@ -226,9 +239,9 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             dsigma(:, N_idx) = eye(obj.numContacts) * obj.options.frictionVariance;
             
             % Get the ERM cost
-            [f, df_gamma, df_z, df_sigma] = obj.ermCost(gamma, z, sigma);
+            [f, df] = obj.ermCost(gamma, z, sigma);
             % Calculate the total differential cost
-            df = df_gamma * dgamma + df_z * dz + df_sigma * dsigma;
+            df = df * [dgamma; dz; dsigma];
             % Sum over all contacts
             f = obj.options.contactCostMultiplier * sum(f, 1);
             df = obj.options.contactCostMultiplier * sum(df, 1);
@@ -251,9 +264,10 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             nX = obj.plant.getNumStates();
             x = y(1:nX);
             [f, df] = obj.normalDistanceDefect(x);
-            df = [df, zeros(obj.numContacts)];
+            f = obj.options.distanceScaling .* f;
+            df = obj.options.distanceScaling .* [df, zeros(obj.numContacts)];
         end
-        function [phi, lambda_s, dphi, dlambda_s] = getNormalDistanceERMVariables(obj, h, x, lambda)
+        function [phi, lambda_s, dphi, dlambda_s, d2phi, d2lambda_s] = getNormalDistanceERMVariables(obj, h, x, lambda)
             %% getNormalDistanceERMVariables: shared function for calculating the ERM Variables (with scaling)
             
             nX = obj.plant.getNumStates();
@@ -261,17 +275,22 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             nL = numel(lambda);
             % Get the normal distance and its gradient
             [phi, ~, ~, ~, ~, ~, ~, ~, Jn, ~, dJn] = obj.plant.contactConstraints(x(1:nQ), false, obj.options.active_collision_options);
-            % Expand the derivative of the distance
+            % Expand the derivative of the distance function
             dphi = [zeros(obj.numContacts, 1), Jn, zeros(obj.numContacts, nQ + nL)];
-            
+            % Expand the hessian of the distance
+            d2phi = zeros(obj.numContacts, 1 + 2*nQ + nL, 1 + 2 * nQ + nL);
+            d2phi(:,2:nQ+1, 2:nQ+1) = dJn;
+            % Initialize the Hessian for the normal force
+            d2lambda_s = zeros(obj.numContacts, 1 + nX + nL, 1 + nX + nL);
             % Apply Scaling, if desired
             switch obj.options.ermScaling
                 case RobustContactImplicitTrajectoryOptimizer.CONSTANT
                     % Scale the contact force by the total mass and the timestep
                     m = obj.plant.totalMass();
                     lambda_s = h^2 * lambda/m;
-                    dlambda_s = [2*h * lambda / m, zeros(obj.numContacts, nX), h^2/m];
-                    
+                    dlambda_s = [2*h * lambda / m, zeros(obj.numContacts, nX), h^2/m*ones(nL,1)];
+                    d2lambda_s(:,:,1) = [2/m * lambda, zeros(obj.numContacts,nX), 2*h/m * ones(nL, 1)];
+                    d2lambda_s(:,1,2+nX:end) = 2/m * eye(nL);
                 case RobustContactImplicitTrajectoryOptimizer.INERTIA
                     % Calculate the effective inertia
                     [M, ~, ~, dM] = obj.plant.manipulatorDynamics(x(1:nQ), x(nQ+1:end));
@@ -299,6 +318,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                     % No scaling
                     lambda_s = lambda;
                     dlambda_s = [zeros(obj.numContacts,1),zeros(obj.numContacts, nX), eye(obj.numContacts)];
+                    
             end
             
         end
@@ -324,11 +344,20 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             sigma = ones(obj.numContacts, 1) * obj.options.heightVariance;
             dsigma = zeros(obj.numContacts,1 + numel(x) + numel(lambda));
             
+            % Scale the distance function
+            phi = obj.options.distanceScaling * phi;
+            dphi = obj.options.distanceScaling * dphi;
+            
             % Calculate the erm Cost
-            [f, df_lambda_s, df_phi, df_sigma] = obj.ermCost(lambda_s, phi, sigma);
+            [f, df] = obj.ermCost(lambda_s, phi, sigma);
             
             % Calculate the total differential cost
-            df = df_lambda_s * dlambda_s + df_phi * dphi + df_sigma * dsigma;
+            df = df * [dlambda_s; dphi; dsigma];           
+            if obj.options.ermSpace == RobustContactImplicitTrajectoryOptimizer.ERM_LOGSPACE
+                ep = 1;
+                df = 1./(f + ep) .* df;
+                f = log(f + ep);
+            end
             % Sum over all contacts
             f = obj.options.contactCostMultiplier * sum(f, 1);
             df = obj.options.contactCostMultiplier * sum(df, 1);
@@ -354,8 +383,8 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             dx = [zeros(obj.numContacts, numel(mu)), eye(numel(x))];
             dsigma = zeros(obj.numContacts, numel(w));
             % Calculate the ERM Cost
-            [f, df_x, df_mu, df_sigma] = obj.ermCost(x, mu, sigma);
-            df = df_x * dx + df_mu * dmu + df_sigma * dsigma;
+            [f, df] = obj.ermCost(x, mu, sigma);
+            df = df * [dx; dmu; dsigma];
             % Sum over the ERM Cost terms
             f = sum(f, 1);
             df = sum(df, 1);
@@ -386,6 +415,36 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             % Combine the results
             f = [f_p; f_l];
             df = [df_p; df_l];
+        end
+        function [f, df] = normalDistanceERMGradientConstraint(obj, y)
+            
+            % Get the variables
+            h = y(1);
+            x = y(2:1+obj.plant.getNumStates);
+            lambda = y(2+obj.plant.getNumStates:1 + obj.plant.getNumStates + obj.numContacts);
+            % Get the ERM Variables
+            [mu, x, dmu, dx, d2mu, d2x] = obj.getNormalDistanceERMVariables(h, x, lambda);
+            sigma = ones(obj.numContacts, 1) * obj.options.heightVariance;
+            dsigma = zeros(obj.numContacts, numel(y));
+            d2sigma = zeros(obj.numContacts, numel(y), numel(y));
+            % Get the ERM Gradient and Hessian
+            [g, dg, Hg] = obj.ermCost(x, mu, sigma);
+            % Collect the Gradient and Hessian into a single vector / matrix
+            dz = [dx; dmu; dsigma];
+            f = dg * dz;                                    % The gradient is the constraint output
+            df = zeros(numel(g), numel(y), numel(y));       % This is the Hessian
+            % Combine the parameter hessians
+            Hz = zeros(3*numel(g), numel(y), numel(y));
+            Hz(1:numel(g),:,:) = d2x;
+            Hz(numel(g)+1:2*numel(g),:,:) = d2mu;
+            Hz(2*numel(g) + 1:end, :,:) = d2sigma;       
+            % Calculate the total ERM Hessian
+            for n = 1:numel(g)
+               df(n,:,:) = dz' * squeeze(Hg(n,:,:)) * dz + squeeze(sum(dg(n,:)' .* Hz, 1));  
+            end
+            % Reshape the outputs
+            f = reshape(f', [numel(g)*numel(y), 1]);
+            df = reshape(permute(df,[2,1,3]), [numel(g)*numel(y), numel(y)]);
         end
         %% ---------------- SLIDING VELOCITY --------------- %%
         function [f, df] = slidingVelocityDefect(obj, x1, lambda)
@@ -472,21 +531,16 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             
             grad_level = 1; % Gradients are provided
             switch obj.options.ermMode
-                case RobustContactImplicitTrajectoryOptimizer.ERM_COMBINED
+                case RobustContactImplicitTrajectoryOptimizer.ERM_OBJECTIVE
                     % Add ERM cost for distance
                     
                     % Create the distance objective
                     distance = FunctionHandleObjective(1 + obj.plant.getNumStates() + obj.numContacts, @obj.normalDistanceERMCost, grad_level);
                     distance = distance.setName(sprintf('DistanceERMCost'));
                     
-                    % Add bounding box constraints on the normal force
-                    nonneg = BoundingBoxConstraint(zeros(obj.numContacts, 1), inf(obj.numContacts,1));
-                    nonneg = nonneg.setName(sprintf('NormalForceNonnegativeConstraint'));
                     % Add the objective at every point
                     for i = 1:obj.N-1
                         distanceIdx = {obj.h_inds(i); obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i)};
-                        % Add a nonnegativity constraint on lambdaN
-                        obj = obj.addConstraint(nonneg, obj.lambda_inds(obj.normal_inds,i));
                         obj = obj.addCost(distance, distanceIdx);
                     end
                 case RobustContactImplicitTrajectoryOptimizer.ERM_SEPARATED
@@ -508,6 +562,31 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                        slackIdx = [obj.h_inds(i); obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds, i); obj.distance_slacks(:,i)];
                        obj = obj.addConstraint(cstr, slackIdx);
                     end
+                case RobustContactImplicitTrajectoryOptimizer.ERM_CONSTRAINT
+                    if obj.options.ermScaling == RobustContactImplicitTrajectoryOptimizer.INERTIA
+                       error('Inertia Scaling is currently not supported with the ERM Gradient Constraint method'); 
+                    end
+                    % Add the gradient of the ERM function as a constraint
+                    cstr_dim = 1 + obj.plant.getNumStates + obj.numContacts;
+                    distance = FunctionHandleConstraint(zeros(obj.numContacts * cstr_dim, 1), zeros(obj.numContacts * cstr_dim, 1), cstr_dim, @obj.normalDistanceERMGradientConstraint);
+                    distance = distance.setName(sprintf('DistanceERMGradientConstraint'));
+                    % Add the gradient as a constraint at every point
+                    for i = 1:obj.N-1
+                       distance_idx = [obj.h_inds(i); obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i)];
+                       obj = obj.addConstraint(distance, distance_idx);
+                    end
+                case RobustContactImplicitTrajectoryOptimizer.ERM_COMBINED
+                     % Create the distance objective
+                    distance = FunctionHandleObjective(1 + obj.plant.getNumStates() + obj.numContacts, @obj.normalDistanceERMCost, grad_level);
+                    distance = distance.setName(sprintf('DistanceERMCost'));                   
+                    % Add the objective at every point
+                    for i = 1:obj.N-1
+                        distanceIdx = {obj.h_inds(i); obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i)};
+                        obj = obj.addCost(distance, distanceIdx);
+                    end
+                    % add in the complementarity constraint on the normal
+                    % distance
+                    obj = obj.addDistanceConstraint();
                 otherwise
                     error('ERM MODE not recognized');
             end
@@ -524,6 +603,10 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             for i = 1:obj.N-1
                 frictionIdx = obj.lambda_inds(:,i);
                 obj = obj.addCost(friction, frictionIdx);
+            end
+            % If desired, also add in the friction constraint
+            if obj.options.erm_mode == RobustConactImplictTrajectoryOptimizer.ERM_COMBINED
+               obj = obj.addFrictionConstraint(); 
             end
         end
         function obj = addSlidingConstraint(obj)
@@ -585,7 +668,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
     methods
         function obj = enableDisplayFunction(obj)
             %% ENABLEDISPLAYFUNCTION: Enables the native display function
-            clear('obj.printCostFunction'); %Reset the function and its persistent variables
+            obj.printCostFunction();    % Clear the persistent variables
             obj = obj.addDisplayFunction(@(h, x, u, l)obj.printCostFunction(h, x, u, l));
         end
         function obj = printCostFunction(obj, h, x, u, l)
@@ -594,10 +677,30 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             %   Note: the display function gets called on every iteration
             %   of the optimization, so we can use persistent variables to
             %   keep track of the iterations
+
+            
             persistent iteration
+            persistent alines
+            
+            if nargin == 1
+                clear iteration;
+                clear alines;
+                return;
+            end
+            
             if isempty(iteration)
                 iteration = 1;
                 fprintf('\n');
+                
+                figure();
+                labels = {'RunningCost','Dynamics','Distance','Friction','Sliding'};
+                alines = cell(1,5);
+                for n = 1:5
+                   subplot(5,1,n);
+                   alines{n} = animatedline;
+                   ylabel(labels{n});
+                end
+                xlabel('Iterations');
             end
             [runningCost, dynamicCstr, distanceCost, frictionCost, slidingCost] = obj.calculateCosts(h, x, u, l);       
             % Print the values to the screen
@@ -606,6 +709,12 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 fprintf(' Iteration \t RunningCost \t DynamicCstr \t FrictionCost \t DistanceCost \t SlidingCstr\n');
             end
             fprintf(' %12f \t %12.6e \t %12.6e \t %12.6e \t %12.6e \t %12.6e\n', iteration, runningCost, dynamicCstr, frictionCost, distanceCost, slidingCost);
+            % Update the cost figures
+            addpoints(alines{1}, iteration, runningCost);
+            addpoints(alines{2}, iteration, dynamicCstr);
+            addpoints(alines{3}, iteration, distanceCost);
+            addpoints(alines{4}, iteration, frictionCost);
+            addpoints(alines{5}, iteration, slidingCost);
             %Increment the iteration count
             iteration = iteration + 1;
         end
@@ -618,26 +727,26 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 case RobustContactImplicitTrajectoryOptimizer.FRICTION_UNCERTAINTY
                     for n = 1:obj.N-1
                         frictionCost = frictionCost + obj.frictionConeERMCost(l(:,n));
-                        distanceCost = distanceCost + norm(obj.normalDistanceConstraint([x(:,n+1); l(obj.normal_inds, n)]));
-                        slidingCost = slidingCost + norm(obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]));
+                        distanceCost = distanceCost + l(obj.normal_inds, n)' * obj.normalDistanceConstraint([x(:,n+1); l(obj.normal_inds, n)]);
+                        slidingCost = slidingCost +  l(obj.tangent_inds,n)' * obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]);
                     end
                 case RobustContactImplicitTrajectoryOptimizer.DISTANCE_UNCERTAINTY
                     for n = 1:obj.N-1
                         distanceCost = distanceCost + obj.normalDistanceERMCost(h(n), x(:,n+1), l(obj.normal_inds, n));
-                        frictionCost = frictionCost + norm(obj.frictionConeConstraint([l(obj.normal_inds, n); l(obj.tangent_inds,n); l(obj.gamma_inds, n)]));
-                        slidingCost = slidingCost + norm(obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]));
+                        frictionCost = frictionCost + l(obj.gamma_inds,n)' * obj.frictionConeConstraint([l(obj.normal_inds, n); l(obj.tangent_inds,n); l(obj.gamma_inds, n)]);
+                        slidingCost = slidingCost + l(obj.tangent_inds,n)' * obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]);
                     end
                 case RobustContactImplicitTrajectoryOptimizer.COMBINED_UNCERTAINTY
                     for n = 1:obj.N-1
                         frictionCost = frictionCost + obj.frictionConeERMCost(l(:,n));
                         distanceCost = distanceCost + obj.normalDistanceERMCost(h(n), x(:,n+1), l(obj.normal_inds, n));
-                        slidingCost = slidingCost + norm(obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]));
+                        slidingCost = slidingCost + l(obj.tangent_inds,n)' * obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]);
                     end
                 otherwise
                     for n = 1:obj.N-1
-                        frictionCost = frictionCost + norm(obj.frictionConeConstraint([l(obj.normal_inds, n); l(obj.tangent_inds,n); l(obj.gamma_inds, n)]));
-                        distanceCost = distanceCost + norm(obj.normalDistanceConstraint([x(:,n+1); l(obj.normal_inds, n)]));
-                        slidingCost = slidingCost + norm(obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]));
+                        frictionCost = frictionCost + l(obj.gamma_inds,n)' * obj.frictionConeConstraint([l(obj.normal_inds, n); l(obj.tangent_inds,n); l(obj.gamma_inds, n)]);
+                        distanceCost = distanceCost + l(obj.normal_inds, n)' * obj.normalDistanceConstraint([x(:,n+1); l(obj.normal_inds, n)]);
+                        slidingCost = slidingCost + l(obj.tangent_inds,n)' * obj.slidingVelocityConstraint([x(:,n+1); l(obj.normal_inds,n); l(obj.gamma_inds, n); l(obj.tangent_inds, n)]);
                     end
             end
  
@@ -701,70 +810,55 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 df(~xmin_idx,:) = 2.*y(~xmin_idx) .*dy (~xmin_idx,:);
             end
         end
-        function [f, dfx, dfmu, dfsigma] = ermCostGaussian(x, mu, sigma)
-            %% ERMCOSTGassian: Cost function for the Expected Residual Minimization with Gaussian variables
-            %
-            %
+        function [f, df, Hf] = ermCostGaussian(x, mu, sigma)
             
-            % Initialize the outputs
-            f = zeros(length(x),1);
-            dfx = zeros(length(x),1);
-            dfmu = dfx;
-            dfsigma = dfx;
-            % Filter out any degenerate distributions (no variance cases)
-            degenerate = (sigma == 0);
-            % Save the degenerate means for the limiting case
-            mu_degenerate = mu(degenerate);
-            x_degenerate = x(degenerate);
-            % Filter out the remaining variables
+            % Column vectorize
+            x = x(:);
+            mu = mu(:);
+            sigma = sigma(:);
             
-            x = x(~degenerate);
-            sigma = sigma(~degenerate);
-            mu = mu(~degenerate);
-            if any(~degenerate)
-                % Calculate the pdf and cdf values
-                pdf = normpdf(x, mu, sigma);
-                cdf = normcdf(x, mu, sigma);
-                % The ERM cost function for Gaussian variables with nonzero
-                % variance
-                f(~degenerate) = x.^2 - sigma.^2 .* (x + mu) .* pdf + (sigma.^2 + mu.^2 - x.^2) .* cdf;
-                % Calculate the derivaties of pdf and cdf wrt x, mu, and sigma
-                tau = (x - mu)./sigma;
-                % The derivatives of pdf
-                dp_sigma = 1./sigma .* pdf .*(tau.^2 -1);
-                dp_mu = tau.*pdf ./ sigma;
-                dp_x = - dp_mu;
-                % The derivatives of cdf
-                dc_sigma = -pdf .* tau;
-                dc_mu = -pdf;
-                dc_x = pdf;
-                % The derivatives
-                dfx(~degenerate) = 2*x - sigma.^2 .* (pdf + (x + mu) .* dp_x) - 2.*x .* cdf + (sigma.^2 + mu.^2 - x.^2) .* dc_x;
-                dfmu(~degenerate) = -sigma.^2 .* (pdf + (x + mu).*dp_mu) + 2.*mu .* cdf + (sigma.^2 + mu.^2 - x.^2 ).* dc_mu;
-                dfsigma(~degenerate) = -2.*sigma .* (x + mu) .* pdf - sigma.^2 .* (x + mu) .* dp_sigma + 2.*sigma .* cdf + (sigma.^2 + mu.^2 - x.^2) .* dc_sigma;
-            end
-            if any (degenerate)
-                % Handle the degenerate case
-                x_idx = (x_degenerate < mu_degenerate);
-                g = zeros(length(x_degenerate), 1);
-                
-                dg_x = g;
-                dg_mu = g;
-                
-                g(x_idx) = x_degenerate.^2;
-                g(~x_idx) = mu_degenerate.^2;
-                
-                dg_x(x_idx) = 2.*x_degenerate;
-                dg_mu(x_idx) = 2.*mu_degenerate;
-                
-                f(degenerate) = g;
-                dfx(degenerate) = dg_x;
-                dfmu(degenerate) = dg_mu;
-            end
-            dfx = diag(dfx);
-            dfmu = diag(dfmu);
-            dfsigma = diag(dfsigma);
-        end     
+            nX = numel(x);
+            % Initialize the Hessian
+            Hf = zeros(nX, 3*nX, 3*nX);
+            % Check for degenerate distributions
+            degenerate = (sigma <= 0);
+            sigma(degenerate) = 0;
+            % Initialize the pdf and cdf values
+            pdf = zeros(length(x), 1);
+            cdf = zeros(length(x), 1);
+            % Calculate pdf and cdf for nondegenerate variables
+            pdf(~degenerate) = normpdf(x(~degenerate), mu(~degenerate), sigma(~degenerate));
+            cdf(~degenerate) = normcdf(x(~degenerate), mu(~degenerate), sigma(~degenerate));
+            % Include the limiting case for CDF when x > mu
+            cdf(and(degenerate, x > mu)) = 1;
+            
+            % Calculate the function values
+            f = x.^2 - sigma.^2 .* (x + mu) .* pdf + (sigma.^2 + mu.^2 - x.^2) .* cdf;
+            % Now the gradients (organized as [df/dx, df/dmu, df/dsigma]);
+            df = [diag(2.*x.*(1 - cdf)), diag(2.*(mu.*cdf - sigma.^2 .* pdf)), diag(2.*sigma.*(cdf - x.*pdf))];
+            % And the Hessians
+            tau = (x - mu)./sigma;
+            tau(degenerate) = 0;
+            sigma(degenerate) = 1;      % Avoid divide by zeros
+            f_xx = 2.*(1 - x.*pdf - cdf);
+            f_mm = 2.*(cdf - x.*pdf);
+            f_ss = -2 .* ((x-mu) + x.*tau.^2).*pdf + 2 .* cdf;
+            f_xm = 2.*x.*pdf;
+            f_xs = 2.*x.*tau.*pdf;
+            f_ms = -2.*sigma.*(1 + x.*tau./sigma).*pdf; 
+            % Deal the values of the hessian to the matrix
+            I = eye(nX) .* reshape(eye(nX), nX, 1, nX);
+            % Deal in the diagonal values
+            Hf(:,1:nX,1:nX) = 0.5 * I .* f_xx;
+            Hf(:,nX+1:2*nX, nX+1:2*nX) = 0.5 * I .* f_mm;
+            Hf(:,2*nX+1:end, 2*nX+1:end) = 0.5 * I .* f_ss;
+            % Deal in the upper triangle
+            Hf(:,1:nX, nX+1:2*nX) = I.*f_xm;
+            Hf(:,1:nX, 2*nX+1:end) = I.*f_xs;
+            Hf(:,nX+1:2*nX, 2*nX+1:end) = I.*f_ms;
+            % Fill in the lower triangle
+            Hf = Hf + permute(Hf, [1,3,2]);
+        end
         function [f, dfx, dfmu, dfsigma] = ermCostLogistic(x, mu, sigma)
             %% ERMCostLogistic: Expected Residual Cost for Logistic Random Variables
             

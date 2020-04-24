@@ -9,6 +9,7 @@ classdef FlatTerrain < Terrain2D
     properties
         friction_coeff = 0.5;
         terrain_height = 0;
+        basis_mult = 1;
     end
     
     methods
@@ -22,7 +23,7 @@ classdef FlatTerrain < Terrain2D
             
             x = [xA(1);obj.terrain_height];
         end
-        function [N, T] = basis(~, ~)
+        function [N, T] = basis(obj, ~)
            % BASIS: Returns the local coordinate basis for the terrain
            %
            %   For a flat terrain, the basis is simply the world
@@ -32,8 +33,8 @@ classdef FlatTerrain < Terrain2D
            %        N: 2x1 double, the normal vector to the terrain
            %        T: 2x1 double, the tangent vector to the terrain
            %
-           N = [0;1];
-           T = [1;0];
+           N = obj.basis_mult*[0;1];
+           T = obj.basis_mult*[1;0];
         end
         function [x,y] = draw(obj, xlim, N)
            % DRAW: Draws the terrain within the limits

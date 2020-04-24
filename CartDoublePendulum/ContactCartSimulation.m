@@ -9,10 +9,10 @@ add_drake;
 cd(here);
 addpath(genpath('PATH_LCP'));
 
-name = 'ContactCart_Sim';
+name = 'ContactCart_Sim2';
 
 plant = ContactDrivenCart();
-plant.cartHeight = 1.5;
+plant.cartHeight = 4;
 plant.timestep = 0.0025;
 plant.terrain.friction_coeff = 0.5;
 
