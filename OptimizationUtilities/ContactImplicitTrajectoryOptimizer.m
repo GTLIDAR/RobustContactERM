@@ -618,19 +618,26 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             J = cell(1,obj.numContacts);
             dJ = cell(1,obj.numContacts);
             % Get rid of the cell arrays to facilitate concatenation
-            D = cat(3,D{:});
-            dD = cat(3,dD{:});
-            
+            % Note: The friction vectors are first collected across the
+            % different contact points, and then collected across the basis
+            % vectors. That is, if there are 3 contact points and 2
+            % friction bases, then rows 1-3 are the positive friction
+            % vectors and rows 4-6 are the negative friction vectors.
+            D = cat(1,D{:});            
             % Reshape the gradients
-            dN = reshape(dN,[obj.numContacts, numel(q), numel(q)]);
-            dD = reshape(dD,[obj.numContacts, numel(q), numel(q), obj.numFriction]);
-            dD = permute(dD, [4,2,3,1]);
-            
+            dN = reshape(dN',[numel(q), numel(q), obj.numContacts]);
+            dN = permute(dN,[3,1,2]);
+            for n = 1:length(dD)
+                dD{n} = reshape(dD{n}',numel(q), numel(q), obj.numContacts);
+                dD{n} = permute(dD{n},[3,1,2]);
+            end
+            dD = cat(1,dD{:});
+            %% TODO: FIX THE JACOBIAN DERIVATIVES FOR MULTI-CONTACT
             for k = 1:obj.numContacts
                 % Jacobian for the kth contact
-                J{k} = [N(k,:); squeeze(D(k,:,:))'];
+                J{k} = [N(k,:); D(k:obj.numContacts:end,:)];
                 % Jacobian derivative for the kth contact
-                dJ{k} = cat(1,dN(k,:,:),dD(:,:,:,k));
+                dJ{k} = cat(1,dN(k,:,:),dD(k:obj.numContacts:end,:,:));
             end
             J = cat(1, J{:});
             dJ = cat(1,dJ{:});
@@ -702,11 +709,12 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % Get the contact conditions
             [phi, ~, ~, ~, ~, ~, ~, mu, N, D, ~, dD] = obj.plant.contactConstraints(q, false, obj.options.active_collision_options);
             % Reshape the tangential force basis for easier use
-            D = cat(3,D{:});
-            D = permute(D,[3,2,1]);
-            dD = cat(3,dD{:});
-            dD = reshape(dD, [obj.numContacts, nQ, nQ, size(dD, 3)]);
-            dD = permute(dD, [4, 2, 3, 1]);
+            D = cat(1,D{:});
+            for n = 1:length(dD)
+                dD{n} = reshape(dD{n}', [nQ, nQ, obj.numContacts]);
+                dD{n} = permute(dD{n}, [3, 1, 2]);
+            end
+            dD = cat(1,dD{:});
             % Initialize the complementarity function
             f = zeros(nZ, 1);
             df = zeros(nZ, nQ + nV + obj.numContacts*(2 + obj.numFriction));
@@ -723,11 +731,11 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 % Derivative wrt tangential force
                 df(G_idx(i),nQ + nV + T_idx(obj.numFriction*(i-1)+1):nQ + nV + T_idx(obj.numFriction*i)) = -1;
                 % Velocity | Tangential complementarity 
-                f(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i),:) = gamma(i) + D(:,:,i)*v;
+                f(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i),:) = gamma(i) + D(i:obj.numContacts:end,:)*v;
                 % Derivative wrt configuration
-                df(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i), 1:nQ) = squeeze(sum(dD(:,:,:,i).*v',2));
+                df(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i), 1:nQ) = squeeze(sum(dD(i:obj.numContacts:end,:,:).*v',2));
                 % Derivative wrt velocity
-                df(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i), nQ+1:nQ+nV) = D(:,:,i);
+                df(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i), nQ+1:nQ+nV) = D(i:obj.numContacts:end,:);
                 % Derivative wrt gamma
                 df(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i), nQ+nV+G_idx(i)) = 1;
             end

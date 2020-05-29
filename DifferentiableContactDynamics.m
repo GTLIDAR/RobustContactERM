@@ -332,6 +332,11 @@ classdef DifferentiableContactDynamics
            
            % Calculate the gradient of the terrain at that point
            [N, T] = obj.terrain.basis(xB);
+           % Expand N and T to select the appropriate contact point
+           N = mat2cell(N, size(N,1),ones(1,size(N,2)));
+           T = mat2cell(T, size(T,1), ones(1,size(T,2)));
+           N = blkdiag(N{:});
+           T = blkdiag(T{:});
            T = [T, -T];
            % Get the Jacobian
            [J, dJ] = obj.jacobian(q);
@@ -349,7 +354,7 @@ classdef DifferentiableContactDynamics
            end
            
            % Calculate the alpha values
-           phi = N' * (xA - xB);    %Signed distance function
+           phi = N' * (xA(:) - xB(:));    %Signed distance function
            alphas = Jn * q - phi;
         end
                 
@@ -385,10 +390,14 @@ classdef DifferentiableContactDynamics
             
             % Calculate the local coordinates of the terrain
             [Nw, Tw] = obj.terrain.basis(xB);
+            % Expand Nw and Tw to select the appropriate contact point
+            Nw = mat2cell(Nw, size(Nw,1),ones(1,size(Nw,2)));
+            Tw = mat2cell(Tw, size(Tw,1), ones(1,size(Tw,2)));
+            Nw = blkdiag(Nw{:});
+            Tw = blkdiag(Tw{:});
             Dw = {Tw};
-            % Calculate thenumT + 2*numN, 1 signed distance function
-            phi = Nw' * (xA - xB);
-            phi = phi';
+            % Calculate the signed distance function
+            phi = Nw' * (xA(:) - xB(:));
             % Calculate N and D from the jacobian
             [J, dJ] = obj.jacobian(q);
             N = J' * Nw;

@@ -20,10 +20,11 @@ classdef FlatTerrain < Terrain2D
             % NEAREST: Returns the nearest point on the terrain
             % 
             %   For FLAT TERRAIN, the nearest point to (xA, yA) is (xA, 0)
-            
-            x = [xA(1);obj.terrain_height];
+            x = zeros(size(xA));
+            x(1,:) = xA(1,:);
+            x(2,:) = obj.terrain_height;
         end
-        function [N, T] = basis(obj, ~)
+        function [N, T] = basis(obj, xB)
            % BASIS: Returns the local coordinate basis for the terrain
            %
            %   For a flat terrain, the basis is simply the world
@@ -35,7 +36,12 @@ classdef FlatTerrain < Terrain2D
            %
            N = obj.basis_mult*[0;1];
            T = obj.basis_mult*[1;0];
-        end
+           
+           % Replicate for each contact point
+           nPoints = size(xB, 2);
+           N = repmat(N, 1, nPoints);
+           T = repmat(T, 1, nPoints);
+        end        
         function [x,y] = draw(obj, xlim, N)
            % DRAW: Draws the terrain within the limits
            %

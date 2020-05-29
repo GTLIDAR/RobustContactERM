@@ -200,6 +200,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             % function (use a matrix so it's invertible).
             lambda = obj.force_converter*y;
             [f, df] = obj.frictionConeDefect(lambda);
+            f = f(:);
             % Re-order the columns of df
             df = df*obj.force_converter;
         end
@@ -264,7 +265,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             nX = obj.plant.getNumStates();
             x = y(1:nX);
             [f, df] = obj.normalDistanceDefect(x);
-            f = obj.options.distanceScaling .* f;
+            f = obj.options.distanceScaling .* f(:);
             df = obj.options.distanceScaling .* [df, zeros(obj.numContacts)];
         end
         function [phi, lambda_s, dphi, dlambda_s, d2phi, d2lambda_s] = getNormalDistanceERMVariables(obj, h, x, lambda)
@@ -448,7 +449,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
         end
         %% ---------------- SLIDING VELOCITY --------------- %%
         function [f, df] = slidingVelocityDefect(obj, x1, lambda)
-            
+            %% TODO FIX JACOBIAN DERIVATIVE
             
             % Get the Tangential Friction Basis
             nX = obj.plant.getNumStates();
@@ -457,11 +458,14 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             dq = x1(nQ+1:end);
             [~, ~, ~, ~, ~, ~, ~, ~,~, Jt, ~, dJt] = obj.plant.contactConstraints(q, false, obj.options.active_collision_options);
             % Reshape the tangential basis so it's easier to use
-            Jt = cat(3,Jt{:});
-            Jt = permute(Jt, [3,2,1]);
-            dJt = cat(3,dJt{:});
-            dJt = reshape(dJt, [obj.numContacts, nQ, nQ, size(dJt, 3)]);
-            dJt = permute(dJt, [4,2,3,1]);
+            % Stack the vectors from different directions together
+            Jt = cat(1,Jt{:});
+            % Organize the derivatives to match the Jacobian
+            for n = 1:length(dJt)
+               dJt{n} = reshape(dJt{n}', [nQ, nQ, obj.numContacts]);
+               dJt{n} = permute(dJt{n}, [3 1 2]);
+            end
+            dJt = cat(1,dJt{:});
             % Separate out the forces
             nL = numel(lambda);
             skip = 2 + obj.numFriction;
@@ -476,9 +480,9 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 % Indices for the current force variable
                 rangeIdx = obj.numFriction * (n-1) + 1 : (obj.numFriction * n);
                 % NCP Variables
-                f(rangeIdx) = gamma(n) + Jt(:,:,n) * dq;
-                dJt_dq = squeeze(sum(dJt(:,:,:,n) .* dq', 2));
-                df(rangeIdx, 1:nX) = [dJt_dq, Jt(:,:,n)];
+                f(rangeIdx) = gamma(n) + Jt(n:obj.numContacts:end,:) * dq;
+                dJt_dq = squeeze(sum(dJt(n:obj.numContacts:end,:,:) .* dq', 2));
+                df(rangeIdx, 1:nX) = [dJt_dq, Jt(n:obj.numContacts:end,:)];
                 df(rangeIdx, nX + G_idx(n)) = 1;
             end
         end
@@ -495,6 +499,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             
             % Get the defects
             [f, df] = obj.slidingVelocityDefect(x, lambda);
+            f = f(:);
             % Re-order the columns of df_lambda
             df_lambda = df(:,nX+1:end);
             df_lambda = df_lambda * obj.force_converter;
