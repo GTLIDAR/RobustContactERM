@@ -15,7 +15,23 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         relax_inds = [];% Indices for the NCC relaxation variables         
         
         cost_handle;    % Handle to the running cost function
+        
+        nJl = 0;        % Number of joint limits
+        jl_inds =[];    % Joint limit force indices
+        Jl = [];        % Joint limit Jacobian
+        
+        
+        lincc_mode = 1; % Mode for linear complementarity constraints (Joint Limits)
+        lincc_slack = 0;% Slack variable for linear complementarity constraints (Joint Limits)    
     end
+    %% TODO
+    %     Add joint limit constraints to
+    %       Dynamics
+    %   Change display function to show
+    %       All Costs
+    %       All constraints
+    
+    
     properties (Constant)
         % INTEGRATION METHODS
         FORWARD_EULER = 1;
@@ -130,6 +146,14 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                obj.relax_inds = inds;
            end
            
+           % Add joint limit forces
+           obj.nJl = length(~isinf([obj.plant.joint_limit_min; obj.plant.joint_limit_max]));
+           if obj.nJl > 0
+               [obj, inds] = obj.addDecisionVariables(obj.nJl*(N-1));
+               obj.jl_inds = inds;
+           end
+           
+           
         end
         function [xtraj, utraj, ftraj,z,F, info, infeasible] = solveTraj(obj, t_init, traj_init)
             % Solve the problem using
@@ -156,6 +180,12 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                    z0(obj.lambda_inds) = traj_init.lambda.eval(t_init);
                end
            end     
+           % Add joint limit variables
+           if obj.nJl > 0
+              if isfield(traj_init, 'jl')
+                    z0(obj.jl_inds) = traj_init.jl.eval(t_init);
+              end
+           end
         end
         function obj = addDynamicConstraints(obj)
             %% addDynamicConstraints: Add the dynamics as constraints to the problem
@@ -174,21 +204,21 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % Choose the appropriate dynamic constraint
             switch obj.options.integration_method
                 case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
-                    n_vars = 2*nX + nU + 1 + nL;
+                    n_vars = 2*nX + nU + 1 + nL + obj.nJl;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.forward_constraint_fun);
                     cstr = cstr.setName(sprintf('DynamicConstraint_Forward'));
                 case ContactImplicitTrajectoryOptimizer.BACKWARD_EULER
-                    n_vars = 2*nX + nU + 1 + nL;
+                    n_vars = 2*nX + nU + 1 + nL + obj.nJl;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.backward_constraint_fun);
                     cstr = cstr.setName(sprintf('DynamicConstraint_Backward'));
                 case ContactImplicitTrajectoryOptimizer.MIDPOINT
-                    n_vars = 2*nX + 2*nU + 1 + nL;
+                    n_vars = 2*nX + 2*nU + 1 + nL + obj.nJl;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.midpoint_constraint_fun);
                     cstr = cstr.setName(sprintf('DynamicConstraint_Midpoint'));
                 case ContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
-                    n_vars = 2*nX + nU + 1 + nL;
+                    n_vars = 2*nX + nU + 1 + nL + obj.nJl;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.semiimplicit_constraint_fun);
-                    cstr = cstr.setName(sprintf('DynamicConstriant_SemiImplicit'));
+                    cstr = cstr.setName(sprintf('DynamicConstraint_SemiImplicit'));
                 otherwise
                     error('Unknown Integration Method');
             end
@@ -198,13 +228,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             for i = 1:N-1
                 switch obj.options.integration_method
                     case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
-                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i)};
+                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
                     case ContactImplicitTrajectoryOptimizer.BACKWARD_EULER
-                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i)};
+                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
                     case ContactImplicitTrajectoryOptimizer.MIDPOINT
-                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.u_inds(:,i+1); obj.lambda_inds(obj.force_inds,i)};
+                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.u_inds(:,i+1); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
                     case ContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
-                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i)};
+                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i), obj.jl_inds(:,i)};
                     otherwise
                         error('Unknown Integration Method');
                 end
@@ -216,6 +246,11 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % Add constraints on the time steps
             if obj.options.time_option == 2
                obj = obj.addTimeStepConstraints(); 
+            end
+            
+            % Add in joint limit constraints
+            if obj.nJl> 0
+               obj = obj.addJointLimitConstraints(); 
             end
         end   
         function obj = addContactConstraints(obj)
@@ -237,7 +272,28 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 end
             end
             
-         end
+        end
+        function obj = addJointLimitConstraints(obj)
+            %% Add joint limit constraints to the problem
+            
+            nQ = obj.plant.getNumPositions();
+            % Create a linear complementarity constraint for the joint
+            % limits
+            W = zeros(obj.nJl);
+            M = [eye(nQ); -eye(nQ)];
+            b = [-obj.plant.joint_limit_min; obj.plant.joint_limit_max];
+            inflimit = isinf(b);
+            M(inflimit,:) = [];
+            b(inflimit) = [];
+            cstr = LinearComplementarityConstraint_original(W, M, b, obj.lincc_mode, obj.lincc_slack);
+            % Add the constraints to the problem
+            for n = 1:obj.N-1
+                obj = obj.addConstraint(cstr, [obj.x_inds(1:nQ, n+1); obj.jl_inds(:,n)]);
+            end
+            % Save the Joint Limit Jacobian
+            obj.Jl = M';
+            
+        end
         function obj = addRunningCost(obj, running_cost_function)
            %% addRunningCost: add the running cost function as the objective
            %
@@ -322,7 +378,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         end
     end
     methods 
-        function [f, df] = forward_constraint_fun(obj, h, x0, x1, u, lambda)
+
+        function [f, df] = forward_constraint_fun(obj, h, x0, x1, u, lambda, jlambda)
            %% FORWARD_CONSTRAINT_FUN: Enforces dynamics using a Forward-Euler integration
            %
            %    Forward Constraint Function enforces the dynamics
@@ -389,11 +446,19 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            dBu = squeeze(sum(dB .* u', 2));
            dJl = squeeze(sum(dJ .* lambda', 2));
            dfv = [-(B*u - C + J'*lambda), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -h*dJl, H, -h*B, -h*J'];
+           % Add joint limits
+           if obj.nJl > 0
+               % Add to the dynamics
+               fv = fv - h*obj.Jl*jlambda;
+               % Add to the gradients
+               dfv(:,1) = -obj.Jl*jlambda;
+               dfv = [dfv; -h*obj.Jl];
+           end
            % Combine the defects and the derivatives
            f = [fq; fv];
            df = [dfq; dfv];
         end
-        function [f, df] = backward_constraint_fun(obj, h, x0, x1, u, lambda)
+        function [f, df] = backward_constraint_fun(obj, h, x0, x1, u, lambda, jlambda)
             %% BACKWARD_CONSTRAINT_FUN: Enforces dynamics using a Backward-Euler integration
             %
             %    Backward Constraint Function enforces the dynamics
@@ -460,11 +525,19 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
             dfv = [-(B*u - C + J'*lambda), zeros(nV, nQ), -H, dHv - h*(dBu - dC(:,1:nQ) + dJl), H + h*dC(:,nQ+1:nQ+nV), -h*B, -h*J'];
+            % Add joint limits
+            if obj.nJl > 0
+               % Add to the dynamics
+               fv = fv - h*obj.Jl*jlambda;
+               % Add to the gradients
+               dfv(:,1) = -obj.Jl*jlambda;
+               dfv = [dfv; -h*obj.Jl];
+            end
             % Combine the defects and the derivatives
             f = [fq; fv];
             df = [dfq; dfv];
         end
-        function [f, df] = midpoint_constraint_fun(obj, h, x0, x1, u0, u1, lambda)
+        function [f, df] = midpoint_constraint_fun(obj, h, x0, x1, u0, u1, lambda, jlambda)
             %% MIDPOINT_CONSTRAINT_FUN: Enforces dynamics using Midpoint integration
             %
             %    Midpoint Constraint Function enforces the dynamics
@@ -535,11 +608,19 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dJl = squeeze(sum(dJ .* lambda', 2));
             dfv = [-(B*u - C + J'*lambda), 0.5*(dHv - h*(dBu - dC(:,1:nQ))), -H + h*0.5*dC(:,nQ+1:nQ+nV),...
                 0.5*(dHv - h*(dBu - dC(:,1:nQ))) - h*dJl, H + h*0.5*dC(:,nQ+1:nQ+nV), -h*0.5*B,-h*0.5*B, -h*J'];
+            % Add joint limits
+            if obj.nJl > 0
+               % Add to the dynamics
+               fv = fv - h*obj.Jl*jlambda;
+               % Add to the gradients
+               dfv(:,1) = -obj.Jl*jlambda;
+               dfv = [dfv; -h*obj.Jl];
+            end
             % Combine the defects and the derivatives
             f = [fq; fv];
             df = [dfq; dfv];
         end
-        function [f, df] = semiimplicit_constraint_fun(obj, h, x0, x1, u, lambda)
+        function [f, df] = semiimplicit_constraint_fun(obj, h, x0, x1, u, lambda, jlambda)
             %% SEMIIMPLICIT_CONSTRAINT_FUN: Enforces dynamics using Semi-Implicit Euler integration
             %
             %    Semi-Implicit Constraint Function enforces the dynamics
@@ -605,6 +686,14 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
             dfv = [-(B*u - C + J'*lambda), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -h*dJl, H, -h*B, -h*J'];
+            % Add joint limits
+            if obj.nJl > 0
+               % Add to the dynamics
+               fv = fv - h*obj.Jl*jlambda;
+               % Add to the gradients
+               dfv(:,1) = -obj.Jl*jlambda;
+               dfv = [dfv; -h*obj.Jl];
+            end
             % Combine the defects and the derivatives
             f = [fq; fv];
             df = [dfq; dfv];
