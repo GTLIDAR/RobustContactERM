@@ -19,8 +19,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         nJl = 0;        % Number of joint limits
         jl_inds =[];    % Joint limit force indices
         Jl = [];        % Joint limit Jacobian
-        
-        
+          
         lincc_mode = 1; % Mode for linear complementarity constraints (Joint Limits)
         lincc_slack = 0;% Slack variable for linear complementarity constraints (Joint Limits)    
     end
@@ -206,22 +205,19 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
                     n_vars = 2*nX + nU + 1 + nL + obj.nJl;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.forward_constraint_fun);
-                    cstr = cstr.setName(sprintf('DynamicConstraint_Forward'));
                 case ContactImplicitTrajectoryOptimizer.BACKWARD_EULER
                     n_vars = 2*nX + nU + 1 + nL + obj.nJl;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.backward_constraint_fun);
-                    cstr = cstr.setName(sprintf('DynamicConstraint_Backward'));
                 case ContactImplicitTrajectoryOptimizer.MIDPOINT
                     n_vars = 2*nX + 2*nU + 1 + nL + obj.nJl;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.midpoint_constraint_fun);
-                    cstr = cstr.setName(sprintf('DynamicConstraint_Midpoint'));
                 case ContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
                     n_vars = 2*nX + nU + 1 + nL + obj.nJl;
                     cstr = FunctionHandleConstraint(zeros(nX, 1), zeros(nX, 1), n_vars, @obj.semiimplicit_constraint_fun);
-                    cstr = cstr.setName(sprintf('DynamicConstraint_SemiImplicit'));
                 otherwise
                     error('Unknown Integration Method');
             end
+            cstr = cstr.setName('DynamicConstraints');
             % Get the indices necessary for the constraints (indices to
             % pull the states, controls, and forces from the decision
             % variable list).
@@ -258,6 +254,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             nX = obj.plant.getNumStates();
             % NC Constraint with no slack variables - original constraint
             nlc_cstr = RelaxedNonlinearComplementarityConstraint(@obj.contact_constraint_fun, nX, obj.numContacts * (2 + obj.numFriction), obj.options.nlcc_mode, obj.options.compl_slack);
+            nlc_cstr = nlc_cstr.setName('ContactConstraints');
             if obj.options.nlcc_mode == 5
                 % Relaxed NC Constraints
                 for i = 1:obj.N - 1
@@ -286,6 +283,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             M(inflimit,:) = [];
             b(inflimit) = [];
             cstr = LinearComplementarityConstraint_original(W, M, b, obj.lincc_mode, obj.lincc_slack);
+            cstr = cstr.setName('JointLimitConstraints');
             % Add the constraints to the problem
             for n = 1:obj.N-1
                 obj = obj.addConstraint(cstr, [obj.x_inds(1:nQ, n+1); obj.jl_inds(:,n)]);
@@ -294,7 +292,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             obj.Jl = M';
             
         end
-        function obj = addRunningCost(obj, running_cost_function)
+        function obj = addRunningCost(obj, running_cost_function, name)
            %% addRunningCost: add the running cost function as the objective
            %
            %    
@@ -319,7 +317,11 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                     otherwise
                         error('Unknown integration method');
                 end
-                running_cost = running_cost.setName(sprintf('RunningCost'));
+                if nargin == 3
+                    running_cost = running_cost.setName(name);
+                else
+                    running_cost = running_cost.setName(sprintf('RunningCost'));
+                end
                 obj = obj.addCost(running_cost,inds_i);
             end
         end
@@ -368,7 +370,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                     dt_max = obj.options.duration(2)/(obj.N - 2);
                     % Let the bounds be 50% the min and 150% the max
                     cstr = BoundingBoxConstraint(0.5*dt_min*ones(1,obj.N-1), 1.5*dt_max*ones(1,obj.N-1));
-                    cstr = cstr.setName(sprintf('BoundedTimestepConstriants'));
+                    cstr = cstr.setName(sprintf('BoundedTimeConstriants'));
                     % Place the constraint over the timesteps
                     obj = obj.addConstraint(cstr, obj.h_inds);
                 otherwise
@@ -834,6 +836,85 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         function obj = addDisplayFunction(obj, display_fun)
            %% AddDisplayFunction: Overloads the native addDisplayFunction to split the decision variables into separate inputs
            obj = addDisplayFunction@NonlinearProgram(obj, @(z)display_fun(z(obj.h_inds), z(obj.x_inds), z(obj.u_inds), z(obj.lambda_inds))); 
+        end
+        function obj = printCostsAndConstraints(obj, z)
+           
+            persistent iteration
+            if nargin == 1
+               clear iteration;
+               return;
+            end
+            % Initialize iteration count
+            if isempty(iteration)
+               iteration = 1; 
+            end
+            % Print counter, costs and constraints
+            CCVals = obj.calculateCostsAndConstraints(z);
+            
+            
+            % Increment iteration count
+            iteration = iteration + 1;
+            
+        end
+        function CCVals = calculateCostsAndConstraints(obj,z)
+            
+            
+            %% Cost function Values
+            numCosts = length(prob.costs);
+           
+            costs = zeros(1,numCosts);
+            costNames = cell(1,numCosts);
+            % Calculate the values of the cost functions
+            for n = 1:numCosts
+                % Get the variable indices
+                inds = obj.cost_xind_cell{n};
+                % Get the variables
+                args = cell(1,length(inds));
+                for k = 1:length(inds)
+                   args{k} = z(inds{k}); 
+                end
+                % Calculate the cost
+                costs(n) = obj.cost{n}.eval_handle(args{:});
+                % Store the costs and the labels
+                costNames{n} = obj.cost{n}.name{1};
+            end
+            % Sort the costs by name
+            [uniqueNames, ~, id] = unique(costNames);
+            CCVals = struct();
+            % Sum the common costs
+            for n = 1:length(uniqueNames)
+               CCVals.(uniqueNames{n}) = sum(costs(id == n)); 
+            end
+            
+            %% Constraint Values
+            numCstr = length(prob.nlcon);
+            cstr = zeros(1,numCstr);
+            cstrName = cell(1,numCstr);
+            % Calculate the values of the constraints
+            for n = 1:numCstr
+               % Get the variable indices
+               inds = obj.nlcon_xind{n};
+               % Get the variables
+               args = cell(1,length(inds));
+               for k = 1:length(inds)
+                  args{k} = z(inds{k}); 
+               end
+               % Now get the value of the constraint
+               val = obj.nlcon{n}.eval_handle(args{:});
+               % Calculate the maximum violation
+               viol = max(obj.nlcon{n}.lb - val, val - obj.nlcon{n}.ub);
+               % Eliminate the infinities
+               viol(isinf(viol)) = 0;
+               % Take the norm
+               cstr(n) = norm(viol);
+               % Add to the associated labeled constraint
+               cstrName{n} = prob.nlcon{n}.name;
+            end
+            % Sum the common constraints
+            [uniqueNames, ~, id] = unique(cstrName);
+            for n = 1:length(uniqueNames)
+               CCVals.(uniqueNames{n}) = sum(cstr(id == n)); 
+            end
         end
     end
     methods (Access = protected)
