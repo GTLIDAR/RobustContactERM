@@ -51,7 +51,13 @@ end
 % Add in the running cost
 if isfield(optimOptions, 'runningCost') && ~isempty(optimOptions.runningCost)
    fprintf('Adding running cost\n');
-    prob = prob.addRunningCost(optimOptions.runningCost); 
+   if ~isstruct(optimOptions.runningCost)
+       prob = prob.addRunningCost(optimOptions.runningCost);
+   else
+       for n = 1:length(optimOptions.runningCost)
+          prob = prob.addRunningCost(optimOptions.runningCost(n).cost, optimOptions.runningCost(n).name); 
+       end
+   end
 end
 % Add in the final cost
 if isfield(optimOptions, 'finalCost') && ~isempty(optimOptions.finalCost)
@@ -78,7 +84,7 @@ end
 % Enable or disable the display function
 if isfield(optimOptions, 'display') && optimOptions.display
     fprintf('Objective and Constraint Display Enabled\n');
-    prob = prob.enableDisplayFunction();
+    prob = prob.enableCostDisplay();
 end
 
 %% Solve the optimization problem

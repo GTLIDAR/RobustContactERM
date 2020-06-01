@@ -13,9 +13,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         
         slack_inds;     % Indices for the NCC Slack variables 
         relax_inds = [];% Indices for the NCC relaxation variables         
-        
-        cost_handle;    % Handle to the running cost function
-        
+                
         nJl = 0;        % Number of joint limits
         jl_inds =[];    % Joint limit force indices
         Jl = [];        % Joint limit Jacobian
@@ -146,9 +144,9 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            end
            
            % Add joint limit forces
-           obj.nJl = length(~isinf([obj.plant.joint_limit_min; obj.plant.joint_limit_max]));
+           obj.nJl = sum(~isinf([obj.plant.joint_limit_min; obj.plant.joint_limit_max]));
            if obj.nJl > 0
-               [obj, inds] = obj.addDecisionVariables(obj.nJl*(N-1));
+               [obj, inds] = obj.addDecisionVariable(obj.nJl*(N-1));
                obj.jl_inds = inds;
            end
            
@@ -221,21 +219,44 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % Get the indices necessary for the constraints (indices to
             % pull the states, controls, and forces from the decision
             % variable list).
-            for i = 1:N-1
-                switch obj.options.integration_method
-                    case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
-                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
-                    case ContactImplicitTrajectoryOptimizer.BACKWARD_EULER
-                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
-                    case ContactImplicitTrajectoryOptimizer.MIDPOINT
-                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.u_inds(:,i+1); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
-                    case ContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
-                        dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i), obj.jl_inds(:,i)};
-                    otherwise
-                        error('Unknown Integration Method');
+            if obj.nJl > 0
+                % Add the dynamics
+                for i = 1:N-1
+                    switch obj.options.integration_method
+                        case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
+                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
+                        case ContactImplicitTrajectoryOptimizer.BACKWARD_EULER
+                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
+                        case ContactImplicitTrajectoryOptimizer.MIDPOINT
+                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.u_inds(:,i+1); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
+                        case ContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
+                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
+                        otherwise
+                            error('Unknown Integration Method');
+                    end
+                    constraints{i} = cstr;
+                    obj = obj.addConstraint(constraints{i}, dyn_inds{i});
                 end
-                constraints{i} = cstr;
-                obj = obj.addConstraint(constraints{i}, dyn_inds{i});
+                % Add joint limit constraints
+                obj = obj.addJointLimitConstraints();
+            else
+                % Just add dynamics
+                for i = 1:N-1
+                    switch obj.options.integration_method
+                        case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
+                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i)};
+                        case ContactImplicitTrajectoryOptimizer.BACKWARD_EULER
+                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i)};
+                        case ContactImplicitTrajectoryOptimizer.MIDPOINT
+                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.u_inds(:,i+1); obj.lambda_inds(obj.force_inds,i)};
+                        case ContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
+                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i)};
+                        otherwise
+                            error('Unknown Integration Method');
+                    end
+                    constraints{i} = cstr;
+                    obj = obj.addConstraint(constraints{i}, dyn_inds{i});
+                end
             end
             % Add in the complementarity constriants
             obj = obj.addContactConstraints();
@@ -244,10 +265,6 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                obj = obj.addTimeStepConstraints(); 
             end
             
-            % Add in joint limit constraints
-            if obj.nJl> 0
-               obj = obj.addJointLimitConstraints(); 
-            end
         end   
         function obj = addContactConstraints(obj)
             
@@ -298,7 +315,6 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            %    
             nX = obj.plant.getNumStates();
             nU = obj.plant.getNumInputs();
-            obj.cost_handle = running_cost_function;    % Store the handle to the running cost functional
             for i=1:obj.N-1
                 switch obj.options.integration_method
                     case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
@@ -833,10 +849,15 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         end
     end
     methods
-        function obj = addDisplayFunction(obj, display_fun)
-           %% AddDisplayFunction: Overloads the native addDisplayFunction to split the decision variables into separate inputs
-           obj = addDisplayFunction@NonlinearProgram(obj, @(z)display_fun(z(obj.h_inds), z(obj.x_inds), z(obj.u_inds), z(obj.lambda_inds))); 
+        function obj = enableCostDisplay(obj)
+            %% ENABLECOSTDISPLAY: Display Each of the Costs and Constraints associated with the problem
+            
+            % Clear and persistent variables
+           obj.printCostsAndConstraints(); 
+           % Add the display function to the list of displays
+           obj = obj.addDisplayFunction(@(z)obj.printCostsAndConstraints(z));
         end
+        
         function obj = printCostsAndConstraints(obj, z)
            
             persistent iteration
@@ -849,9 +870,29 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                iteration = 1; 
             end
             % Print counter, costs and constraints
-            CCVals = obj.calculateCostsAndConstraints(z);
+            CCVals = obj.calculateCostsAndConstraints(z);  
+            valNames = fieldnames(CCVals);
+            args = cell(1,length(valNames));
             
+            % Create the string formats to print out the costs
+            titleStr = cell(1,length(valNames));
+            formatStr = cell(1,length(valNames));
+
+            for n = 1:length(valNames)
+               titleStr{n} = [' ',valNames{n},' \t']; 
+               formatStr{n} = [' %',num2str(length(valNames{n})), '.6e \t'];
+               args{n} = CCVals.(valNames{n});
+            end
             
+            titleStr = [' Iteration \t', cat(2,titleStr{:})];
+            formatStr = [' %12d \t', cat(2,formatStr{:})];
+            
+            % Every 100 iterations, print the labels
+            if rem(iteration, 100) == 1
+               fprintf([titleStr, '\n']);
+            end
+            % Print the cost values
+            fprintf([formatStr, '\n'], iteration, args{:});
             % Increment iteration count
             iteration = iteration + 1;
             
@@ -860,7 +901,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             
             
             %% Cost function Values
-            numCosts = length(prob.costs);
+            numCosts = length(obj.cost);
            
             costs = zeros(1,numCosts);
             costNames = cell(1,numCosts);
@@ -887,7 +928,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             end
             
             %% Constraint Values
-            numCstr = length(prob.nlcon);
+            numCstr = length(obj.nlcon);
             cstr = zeros(1,numCstr);
             cstrName = cell(1,numCstr);
             % Calculate the values of the constraints
@@ -908,7 +949,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                % Take the norm
                cstr(n) = norm(viol);
                % Add to the associated labeled constraint
-               cstrName{n} = prob.nlcon{n}.name;
+               cstrName{n} = obj.nlcon{n}.name{1};
             end
             % Sum the common constraints
             [uniqueNames, ~, id] = unique(cstrName);
