@@ -50,6 +50,7 @@ if nargin == 0 || isempty(options)
     options = [];
 end
 
+isNonnegScalar = @(x) isnumeric(x) && isscalar(x) && (x >= 0);
 isPosScalar = @(x) isnumeric(x) && isscalar(x) && (x > 0);
 isPosInteger = @(x) isPosScalar(x) && (rem(x, 1) == 0);
 inrange= @(x, lb, ub) (isPosInteger(x) || x == 0) && (x >= lb) && (x <= ub);
@@ -61,6 +62,7 @@ addParameter(parser, 'time_option', 1, @(x) inrange(x, 1, 2));
 addParameter(parser, 'time_constraints', RobustContactImplicitTrajectoryOptimizer.BOUNDTIME, @(x) inrange(x, 1, 3));
 addParameter(parser, 'nlcc_mode',2, @(x) inrange(x, 1, 5));
 addParameter(parser, 'relax_cost',1, isPosScalar);
+addParameter(parser,'compl_slack',0, isNonnegScalar);
 % Set the default values for Robust-Specific options
 addParameter(parser, 'distribution', RobustContactImplicitTrajectoryOptimizer.GAUSSIAN, @(x) inrange(x, 1, 2));
 addParameter(parser, 'heightVariance', 1, isPosScalar);

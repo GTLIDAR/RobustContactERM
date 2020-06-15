@@ -37,7 +37,23 @@ end
 
 %% Plot the joint trajectories
 fig = figure('name','Joints');
-subplot(3,1,1);
+if isfield(soln, 'jltraj')
+    NFigs = 4;
+    subplot(NFigs,1,4)
+    N = size(soln.jltraj,1);
+    P = [eye(N/2), -eye(N/2)];
+    % Resolve the joint limit torques
+    jL = P*soln.jltraj;
+    % Plot the joint limit torques
+    plot(t,jL(1,:),t,jL(2,:),t,jL(3,:),'LineWidth',1.5);
+    ylabel('Limit Torques');
+    xlabel('Time (s)');
+else
+    NFigs = 3;
+end
+
+
+subplot(NFigs,1,1);
 hold on;
 plot(t,x(3,:),'LineWidth',1.5,'DisplayName','Hip');
 plot(t,x(4,:),'LineWidth',1.5,'DisplayName','Knee');
@@ -45,15 +61,17 @@ plot(t,x(5,:),'LineWidth',1.5,'DisplayName','Ankle');
 legend show;
 legend boxoff;
 ylabel('Joint Angles');
-subplot(3,1,2);
+subplot(NFigs,1,2);
 hold on;
 plot(t,x(8,:),t,x(9,:),t,x(10,:),'LineWidth',1.5);
 ylabel('Joint Velocity');
-subplot(3,1,3);
+subplot(NFigs,1,3);
 hold on;
 plot(t,u(1,:),t,u(2,:),t,u(3,:),'LineWidth',1.5);
-ylabel('Joint Torques');
-xlabel('Time (s)');
+ylabel('Control Torques');
+if NFigs == 3
+    xlabel('Time (s)');
+end
 if nargin == 3
    saveas(fig,'JointTrajectory.fig'); 
 end

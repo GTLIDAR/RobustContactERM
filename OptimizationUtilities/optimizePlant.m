@@ -61,10 +61,32 @@ if isfield(optimOptions, 'runningCost') && ~isempty(optimOptions.runningCost)
 end
 % Add in the final cost
 if isfield(optimOptions, 'finalCost') && ~isempty(optimOptions.finalCost)
-   fprintf('Adding terminal cost\n');
-    prob = prob.addFinalCost(optimOptions.finalCost); 
+    fprintf('Adding terminal cost\n');
+    prob = prob.addFinalCost(optimOptions.finalCost);
+end
+% Add in a differenced cost
+if isfield(optimOptions, 'differenceCost') && ~isempty(optimOptions.differenceCost)
+    fprintf('Adding differenced cost\n');
+    if ~isstruct(optimOptions.differenceCost)
+        prob = prob.addDifferenceCost(optimOptions.differenceCost);
+    else
+        for n = 1:length(optimOptions.differenceCost)
+            prob = prob.addDifferenceCost(optimOptions.differenceCost(n).cost, optimOptions.differenceCost(n).name);
+        end
+    end
 end
 
+% Add in a force cost
+if isfield(optimOptions, 'forceCost') && ~isempty(optimOptions.forceCost)
+    fpritnf('Adding force cost\n');
+    if ~isstruct(optimOptions.forceCost)
+        prob = prob.addForceCosft(optimOptions.forceCost);
+    else
+        for n = 1:length(optimOptions.forceCost)
+            prob = prob.addForceCost(optimOptions.forceCost(n).cost, optimOptions.forceCost(n).name);
+        end
+    end
+end
 %% Set the options for the solver
 % Set the solver to SNOPT
 prob = prob.setSolver('snopt');
@@ -115,5 +137,11 @@ if optimOptions.options.nlcc_mode == 5
    soln.relax = soln.z(prob.relax_inds); 
    fprintf('Relaxed NC Constraint Maximum: %8.2e\n',max(soln.relax));
 end
+% Check for jointt limits
+if prob.nJl > 0
+    jl = soln.z(prob.jl_inds);
+    soln.jltraj = jl;
+end
+
 % Clear the persistent variables, if display is on
 end

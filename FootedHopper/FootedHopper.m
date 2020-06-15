@@ -1,5 +1,3 @@
-
-
 classdef FootedHopper <  Manipulator & DifferentiableContactDynamics 
     
     properties
@@ -397,8 +395,11 @@ methods
         % Calculate ankle angle
         q3 = phi - q1 - q2 + pi/2;
         
+        % Wrap the angles between -pi and pi
+        q = wrapToPi([q1, q2, q3]);
+        
         % Collect the configuration
-        q = [xb(1), xb(2), q1, q2, q3];
+        q = [xb(1), xb(2), q];
     end
 end
 end

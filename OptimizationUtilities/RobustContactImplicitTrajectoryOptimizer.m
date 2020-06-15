@@ -147,7 +147,9 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             % Check for relaxed NC Constraints
             if obj.options.nlcc_mode == 5
                % Add in the relaxing variables as a cost
-               obj = obj.addCost(FunctionHandleObjective(obj.N-1, @(x) obj.relaxed_nc_cost(x)), obj.relax_inds);
+               cost = FunctionHandleObjective(obj.N-1, @(x) obj.relaxed_nc_cost(x));
+               cost = cost.setName('RelaxedNLCCost');
+               obj = obj.addCost(cost, obj.relax_inds);
             end
         end
     end
