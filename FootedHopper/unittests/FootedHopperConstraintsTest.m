@@ -9,7 +9,7 @@ classdef FootedHopperConstraintsTest < matlab.unittest.TestCase
         plant = FootedHopper();
         q;
         dq = [0.5, -0.1, 1, -2, -0.5]';
-        l = [10, 0, -1, 0, 2, 1.4, 0.8, 0.2];
+        l = [10, 0, -1, 0, 2, 1.4, 0.8, 0.2]';
         % Finite Differencing Settings
         h = 1e-8;
         tol = 1e-6;
@@ -21,7 +21,8 @@ classdef FootedHopperConstraintsTest < matlab.unittest.TestCase
             testCase.plant.lengths(3) = 1/3;
             testCase.plant.inertias(3) = 1/12 * testCase.plant.masses(3) * testCase.plant.lengths(3)^2;
             % Create the optimizer
-            testCase.optimizer = RobustContactImplicitTrajectoryOptimizer(testCase.plant, 101,1);
+            options = struct('frictionVariance',0.01,'heightVariance',0.1,'ermFrictionBias',0.001);
+            testCase.optimizer = RobustContactImplicitTrajectoryOptimizer(testCase.plant, 101,1,options);
             % Create some seed values
             x0 = [0, 1.5, (1-testCase.plant.heelFraction)*testCase.plant.lengths(3),0]';
             testCase.q = testCase.plant.inverseKinematics(x0(1:2), x0(3:4),-30)';
@@ -39,11 +40,15 @@ classdef FootedHopperConstraintsTest < matlab.unittest.TestCase
         end
         function normalDistanceTest(testCase)
             % Test Parameters
-            x = [testCase.q; testCase.dq; testCase.l([1,5])'];
+            x = [testCase.q; testCase.dq; testCase.l([1,5])];
             % Get the values from the normal distance 
             [f, df] = testCase.optimizer.normalDistanceConstraint(x);
             % Check the size of the distance values
             testCase.assertEqual(size(f), [2,1], 'Incorrect number of distances');
+            % Check the values of the distances
+            p = testCase.plant.kinematics(testCase.q);
+            phi = p(2,:)';
+            testCase.verifyEqual(f, phi, 'Normal distances are not accurate');
             % Estimate the derivative using finite differences
             df_est = testCase.finiteDifference(@(z) testCase.optimizer.normalDistanceConstraint(z), x);
             % Compare the values
@@ -51,7 +56,7 @@ classdef FootedHopperConstraintsTest < matlab.unittest.TestCase
         end
         function slidingVelocityTest(testCase)
             % Test Parameters
-            x = [testCase.q; testCase.dq; testCase.l([1,5,4,8,2,3,6,7])'];
+            x = [testCase.q; testCase.dq; testCase.l([1,5,4,8,2,3,6,7])];
             % Value of the sliding constraint
             [f, df] = testCase.optimizer.slidingVelocityConstraint(x);
             % Check the size of the constraint
@@ -102,14 +107,8 @@ classdef FootedHopperConstraintsTest < matlab.unittest.TestCase
            f = testOptimizer.slidingVelocityDefect([q_;dq_], [1,2,-3,gamma,1.4,4.2,-2.1,gamma]');
            
            % Check 
-           testCase.verifyEqual(f, slidingVal,'RelTol',1e-12,'Sliding Velocity Constraint Inaccurate');
-           
-            
-            
+           testCase.verifyEqual(f, slidingVal,'RelTol',1e-12,'Sliding Velocity Constraint Inaccurate');           
         end
-        
-        
-        
         function evalContactJacobianTest(testCase)
            % Test Case
            x = testCase.q;
@@ -146,7 +145,7 @@ classdef FootedHopperConstraintsTest < matlab.unittest.TestCase
         end
         function frictionConeTest(testCase)
             % Test Parameters
-            x = testCase.l([1,5,2,3,6,7,4,8])';
+            x = testCase.l([1,5,2,3,6,7,4,8]);
             % Constraint values
             [f, df] = testCase.optimizer.frictionConeConstraint(x);
             % Check the size
@@ -156,9 +155,36 @@ classdef FootedHopperConstraintsTest < matlab.unittest.TestCase
             % Compare
             testCase.verifyEqual(df, df_est, 'RelTol',testCase.tol, 'Friction cone gradient inaccurate');
         end
+        function ermDistanceTest(testCase)
+            % Test parameters
+            lambdaN = testCase.l([1,5]);
+            x = [testCase.q; testCase.dq];
+            dt  = 0.01;
+            % Distance ERM value
+            [~, df] = testCase.optimizer.normalDistanceERMCost(dt, x, lambdaN);
+            % Check each of the derivatives
+            df_est = testCase.finiteDifference(@(z) testCase.optimizer.normalDistanceERMCost(z, x, lambdaN), dt);
+            testCase.verifyEqual(df(:,1), df_est, 'RelTol',testCase.tol, 'Distance ERM stepsize gradient inaccurate');
+            df_est = testCase.finiteDifference(@(z) testCase.optimizer.normalDistanceERMCost(dt, z, lambdaN), x);
+            testCase.verifyEqual(df(:,2:numel(x)+1), df_est, 'RelTol',testCase.tol,'Distance ERM state gradient inaccurate');
+            df_est = testCase.finiteDifference(@(z) testCase.optimizer.normalDistanceERMCost(dt, x, z), lambdaN);
+            testCase.verifyEqual(df(:,numel(x)+2:end), df_est, 'RelTol', testCase.tol, 'Distance ERM Force gradient inaccurate');
+            
+        end
+        function ermFrictionTest(testCase)
+            % Test parameters
+            lambda = testCase.l;
+            % Constraint Values
+            [~, df] = testCase.optimizer.frictionConeERMCost(lambda);
+            % Estimate the gradient
+            df_est = testCase.finiteDifference(@(z) testCase.optimizer.frictionConeERMCost(z), lambda);
+            % Check the components of the gradient
+            testCase.verifyEqual(df(:,[1,5]), df_est(:,[1,5]), 'RelTol',testCase.tol,'Friction ERM Normal Force Gradients inaccurate');
+            testCase.verifyEqual(df(:,[4,8]), df_est(:,[4,8]), 'RelTol',testCase.tol,'Friction ERM Slack Variables Gradient inaccurate');
+            testCase.verifyEqual(df(:,[2,3,6,7]), df_est(:,[2,3,6,7]),'RelTol',testCase.tol,'Friction ERM Tangent Force Gradients inaccurate');            
+        end
     end
-      methods
-        
+      methods   
         function df = finiteDifference(obj, fun, x)
             
             f = fun(x);

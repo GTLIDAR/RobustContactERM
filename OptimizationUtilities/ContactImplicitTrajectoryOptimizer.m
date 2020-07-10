@@ -5,8 +5,6 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         numFriction;    % Number of friction basis vectors per contact
         lambda_inds;    % Indices for finding the contact variables inside the decision variables, ordered [normal; tangential; velocity_slacks];
         force_inds;     % Indices for finding the force variables from inside the contact variables, ordered [normal; tangential];
-        force_converter;% Orthonormal matrix for converting the force variables to [normal1, tang1, slack1, ... normalN, tangN, slackN] ordering
-                        % from [normal1, ... normalN, tang1,...tangN, slack1 ... slackN] ordering
         normal_inds;    % Row indices for the normal forces    
         tangent_inds;   % Row indices for the tangential forces
         gamma_inds;     % Row indices for the sliding velocity slack variables.
@@ -49,10 +47,10 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 options.active_collision_options.terrain_only = true;
             end
             if ~isfield(options, 'integration_method')
-               options.integration_method = ContactImplicitTrajectoryOptimizer.MIDPOINT; 
+               options.integration_method = ContactImplicitTrajectoryOptimizer.BACKWARD_EULER; 
             end
             if ~isfield(options,'nlcc_mode')
-                options.nlcc_mode = 1;
+                options.nlcc_mode = 2;
             end
             if ~isfield(options,'compl_slack')
                 options.compl_slack = 0;
@@ -75,9 +73,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             end
             % Construct the object
             obj = obj@DirectTrajectoryOptimization(plant, N, duration, options);    
-
-        end
-        
+        end     
         function obj = setupVariables(obj, N)
            %% SETUP VARIABLES: Overload setupVariables in DirectTrajectoryOptimization
            %    to include the forces as decision variables    
@@ -97,27 +93,10 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % Calculate the indices for getting the forces from the decision
            % variable list
            obj.lambda_inds = reshape(obj.num_vars + (1:N * nContactForces), nContactForces, N);
-           % Get the forces from the lambda variables
-           obj.force_inds = 1:nContactForces;
-           skip = 2 + obj.numFriction;
-           vel_slacks = skip:skip:nContactForces;
-           obj.force_inds(vel_slacks) = [];
            
            % Add decision variables for the forces
            obj = obj.addDecisionVariable(N * nContactForces);
-           
-           % Add an additional "force converter" property to the object
-           S = zeros(nContactForces);
-           % Select the normal forces
-           S(1:2+obj.numFriction:end, 1:obj.numContacts) = eye(obj.numContacts);
-           % Select the slack variables
-           S(obj.numFriction + 2: obj.numFriction+2:end, obj.numContacts*(1+obj.numFriction) + 1:end) = eye(obj.numContacts);
-           for k = 1:obj.numContacts
-               % Select the tangential forces
-               S((2 + obj.numFriction)*(k-1) + 2:(2+obj.numFriction)*(k-1) + 1 + obj.numFriction,obj.numContacts + 1 + obj.numFriction*(k-1):obj.numContacts + obj.numFriction*k) = eye(obj.numFriction);
-           end
-           obj.force_converter = sparse(S);
-           
+                   
            % Set the index variables for the individual forces
            skip = 2 + obj.numFriction;
            % Normal force indices
@@ -128,6 +107,10 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            T_idx = 1:nContactForces;
            T_idx([obj.normal_inds,obj.gamma_inds]) = [];
            obj.tangent_inds = T_idx;
+           
+           % Set index variables to get just the forces
+           obj.force_inds = 1:nContactForces;
+           obj.force_inds(obj.gamma_inds) = [];
            
            % Set the relaxation variables
            if obj.options.nlcc_mode == 5
@@ -263,7 +246,9 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             nX = obj.plant.getNumStates();
             % NC Constraint with no slack variables - original constraint
             nlc_cstr = RelaxedNonlinearComplementarityConstraint(@obj.contact_constraint_fun, nX, obj.numContacts * (2 + obj.numFriction), obj.options.nlcc_mode, obj.options.compl_slack);
-            nlc_cstr = nlc_cstr.setName('ContactConstraints');
+            nlc_cstr.constraints{1} = nlc_cstr.constraints{1}.setName('ContactForceNonneg');
+            nlc_cstr.constraints{2} = nlc_cstr.constraints{2}.setName('ContactFuncNonneg');
+            nlc_cstr.constraints{3} = nlc_cstr.constraints{3}.setName('ContactCompl');
             if obj.options.nlcc_mode == 5
                 % Relaxed NC Constraints
                 for i = 1:obj.N - 1
@@ -294,13 +279,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             M(inflimit,:) = [];
             b(inflimit) = [];
             cstr = LinearComplementarityConstraint_original(W, b, M, obj.lincc_mode, obj.lincc_slack);
-            for n = 1:length(cstr.constraints)
-               cstr.constraints{n}  = cstr.constraints{n}.setName('JointLimitConstraints'); 
-            end
-            % Add the constraints to the problem
+            cstr.constraints{1} = cstr.constraints{1}.setName('JointForceNonneg');
+            cstr.constraints{2} = cstr.constraints{2}.setName('JointLimitNonneg');
+            cstr.constraints{3} = cstr.constraints{3}.setName('JointLimitCompl');
             for n = 1:obj.N-1
-                obj = obj.addConstraint(cstr, [obj.x_inds(1:nQ, n+1); obj.jl_inds(:,n)]);
+                obj = obj.addConstraint(cstr,[obj.x_inds(1:nQ,n+1); obj.jl_inds(:,n)]);
             end
+            
             
         end
         function obj = addRunningCost(obj, running_cost_function, name)
@@ -363,7 +348,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             end
             % Add the cost at every node point
             for n = 1:obj.N-1
-               inds = {obj.h_inds(n); obj.force_inds([obj.normal_inds, obj.tangent_inds], n)};
+               inds = {obj.h_inds(n); obj.lambda_inds(obj.force_inds, n)};
                obj = obj.addCost(cost, inds);
             end
         end
@@ -396,8 +381,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             end
             % Add the cost at every node point
             for n = 1:obj.N-1
-                inds = {obj.h_inds(n+1); obj.x_inds(:,n); obj.x_inds(:,n+1); obj.u_inds(:, n); obj.u_inds(:,n+1);...
-                    obj.force_inds([obj.normal_inds, obj.tangent_inds],n); obj.force_inds([obj.normal_inds, obj.tangent_inds], n+1)};
+                inds = {obj.h_inds(n); obj.x_inds(:,n); obj.x_inds(:,n+1); obj.u_inds(:, n); obj.u_inds(:,n+1);...
+                    obj.lambda_inds(obj.force_inds,n); obj.lambda_inds(obj.force_inds, n+1)};
                 obj = obj.addCost(running_cost, inds);
             end
             
@@ -454,6 +439,37 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                     % No Constraints
                     error('Unrecognized timestep constraint method');
             end
+        end
+        function obj = addFinalCost(obj, cost_func, name)
+            %% addFinalCost: Adds a terminal cost to the problem
+            %
+            %   addFinalCost overloads the method in
+            %   DirectTrajectoryOptimization to allow the user to name the
+            %   final cost for display. The cost function included must
+            %   have the following syntax:
+            %
+            %   [f, df] = final_cost(h, x)
+            %
+            %   where 
+            %       h is a vector of all timesteps, 
+            %       x is the final state, 
+            %       f is the value of the final cost
+            %       df is the gradient of the final cost with respect to h
+            %       and x
+            
+            % Dimensions
+            nX = obj.plant.getNumStates();
+            nH = obj.N - 1;
+            % Create the handle obejctive
+            cost = FunctionHandleObjective(nH + nX, @(h, x)cost_func(h, x));
+            % Label the terminal cost
+            if nargin == 3
+                cost = cost.setName(name);
+            else
+                cost = cost.setName('TerimalCost');
+            end
+            % Add the cost to the problem
+            obj = obj.addCost(cost, {obj.h_inds; obj.x_inds(:,end)});
         end
     end
     methods 
@@ -532,7 +548,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                % Add to the dynamics
                fv = fv - h*Jl'*jlambda;
                % Add to the gradients
-               dfv(:,1) = -Jl'*jlambda;
+               dfv(:,1) = dfv(:,1) - Jl'*jlambda;
                dfv = [dfv, -h*Jl'];
                dfq = [dfq, zeros(size(Jl'))];
            end
@@ -602,11 +618,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dfq = [-v1,-eye(nQ),zeros(nQ,nV),eye(nQ),-h*eye(nV),zeros(nQ,nU + nL)];
             % Calculate the forward dynamics defects (velocity equation)
             fv = H*(v1 - v0) - h*(B*u - C + J'*lambda);
+%             fv = H*(v1 - v0) - h*(B*u - C) - J'*lambda;
             % Calculate the derivative
             dHv = squeeze(sum(dH .* (v1 - v0)', 2));
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
             dfv = [-(B*u - C + J'*lambda), zeros(nV, nQ), -H, dHv - h*(dBu - dC(:,1:nQ) + dJl), H + h*dC(:,nQ+1:nQ+nV), -h*B, -h*J'];
+%             dfv = [-B*u + C, zeros(nV, nQ), -H, dHv - h*(dBu - dC(:,1:nQ) + dJl), H + h*dC(:,nQ+1:nQ+nV), -h*B, -J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
@@ -614,9 +632,11 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 Jl(isinf(b),:) = [];
                 % Add to the dynamics
                 fv = fv - h*Jl'*jlambda;
+%                 fv = fv - Jl'*jlambda;
                 % Add to the gradients
-                dfv(:,1) = -Jl'*jlambda;
+                dfv(:,1) = dfv(:,1) - Jl'*jlambda;
                 dfv = [dfv, -h*Jl'];
+%                 dfv = [dfv, -Jl'];
                 dfq = [dfq, zeros(size(Jl'))];
             end
             % Combine the defects and the derivatives
@@ -702,7 +722,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 % Add to the dynamics
                 fv = fv - h*Jl'*jlambda;
                 % Add to the gradients
-                dfv(:,1) = -Jl'*jlambda;
+                dfv(:,1) = dfv(:,1) - Jl'*jlambda;
                 dfv = [dfv, -h*Jl'];
                 dfq = [dfq, zeros(size(Jl'))];
             end
@@ -784,7 +804,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 % Add to the dynamics
                 fv = fv - h*Jl'*jlambda;
                 % Add to the gradients
-                dfv(:,1) = -Jl'*jlambda;
+                dfv(:,1) =dfv(:,1) - Jl'*jlambda;
                 dfv = [dfv, -h*Jl'];
                 dfq = [dfq, zeros(size(Jl'))];
             end
@@ -877,17 +897,9 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % Get the contact variables
             z = y(nQ + nV + 1:end, :);
             nZ = numel(z);
-            skip = 2 + obj.numFriction;
-            T_idx = 1:nZ;
-            % Get the normal force
-            N_idx = 1:skip:nZ;
-            lambda_N = z(N_idx);
-            % Get the velocity slack variables
-            G_idx = skip:skip:nZ;
-            gamma = z(G_idx);
-            % Get the tangential force
-            T_idx([N_idx,G_idx]) = [];
-            lambda_T = z(T_idx);
+            lambda_N = z(obj.normal_inds);
+            gamma = z(obj.gamma_inds);
+            lambda_T = z(obj.tangent_inds);
             
             % Get the contact conditions
             [phi, ~, ~, ~, ~, ~, ~, mu, N, D, ~, dD] = obj.plant.contactConstraints(q, false, obj.options.active_collision_options);
@@ -903,24 +915,24 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             df = zeros(nZ, nQ + nV + obj.numContacts*(2 + obj.numFriction));
             
             % Distance | Normal complementarity
-            f(N_idx,:) = phi;       % Distance function
-            df(N_idx,1:nQ) = N;     % Normal vector
+            f(obj.normal_inds,:) = phi;       % Distance function
+            df(obj.normal_inds,1:nQ) = N;     % Normal vector
                 
             for i = 1:obj.numContacts
                 % Slack | Cone complementarity
-                f(G_idx(i),:) = lambda_N(i)*mu - sum(lambda_T(obj.numFriction*(i-1)+1 : obj.numFriction*i));
+                f(obj.gamma_inds(i),:) = lambda_N(i)*mu(i) - sum(lambda_T(obj.numFriction*(i-1)+1 : obj.numFriction*i));
                 % Derivative wrt normal force
-                df(G_idx(i),nQ + nV + N_idx(i)) = mu;
+                df(obj.gamma_inds(i),nQ + nV + obj.normal_inds(i)) = mu(i);
                 % Derivative wrt tangential force
-                df(G_idx(i),nQ + nV + T_idx(obj.numFriction*(i-1)+1):nQ + nV + T_idx(obj.numFriction*i)) = -1;
+                df(obj.gamma_inds(i),nQ + nV + obj.tangent_inds(obj.numFriction*(i-1)+1):nQ + nV + obj.tangent_inds(obj.numFriction*i)) = -1;
                 % Velocity | Tangential complementarity 
-                f(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i),:) = gamma(i) + D(i:obj.numContacts:end,:)*v;
+                f(obj.tangent_inds(obj.numFriction*(i-1)+1):obj.tangent_inds(obj.numFriction*i),:) = gamma(i) + D(i:obj.numContacts:end,:)*v;
                 % Derivative wrt configuration
-                df(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i), 1:nQ) = squeeze(sum(dD(i:obj.numContacts:end,:,:).*v',2));
+                df(obj.tangent_inds(obj.numFriction*(i-1)+1):obj.tangent_inds(obj.numFriction*i), 1:nQ) = squeeze(sum(dD(i:obj.numContacts:end,:,:).*v',2));
                 % Derivative wrt velocity
-                df(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i), nQ+1:nQ+nV) = D(i:obj.numContacts:end,:);
+                df(obj.tangent_inds(obj.numFriction*(i-1)+1):obj.tangent_inds(obj.numFriction*i), nQ+1:nQ+nV) = D(i:obj.numContacts:end,:);
                 % Derivative wrt gamma
-                df(T_idx(obj.numFriction*(i-1)+1):T_idx(obj.numFriction*i), nQ+nV+G_idx(i)) = 1;
+                df(obj.tangent_inds(obj.numFriction*(i-1)+1):obj.tangent_inds(obj.numFriction*i), nQ+nV+obj.gamma_inds(i)) = 1;
             end
         end
         function [f, df] = differenceCost(obj, cost_fun, h, x0, x1, u0, u1, l0, l1)
@@ -984,9 +996,9 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 titleStr{n} = [' ',valNames{n},' \t'];
                 formatStr{n} = [' %',num2str(length(valNames{n})), '.6e \t'];
                 if n <= length(costNames)
-                    args{n} = cost.(valNames{n});
+                    args{n} = sum(cost.(valNames{n}));
                 else
-                    args{n} = cstr.(valNames{n});
+                    args{n} = sum(cstr.(valNames{n}));
                 end
             end
             
@@ -1001,44 +1013,44 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             fprintf([formatStr, '\n'], iteration, args{:});
             
             
-            % Make a figure
-            if iteration  == 1
-                % Plot the figures
-                costlines = figure();
-                for n = 1:length(costNames)
-                   subplot(length(costNames),1, n);
-                   plot(iteration, cost.(costNames{n}),'k');
-                   ylabel(costNames{n});
-                end
-                xlabel('Iterations');
-                
-                % Plot the constraints
-                cstrlines = figure();
-                for n = 1:length(cstrNames)
-                    subplot(length(cstrNames), 1, n)
-                    plot(iteration, cstr.(cstrNames{n}), 'k');
-                    ylabel(cstrNames{n})
-                end
-                xlabel('Iterations');
-            else
-                figure(costlines)
-                for n = 1:length(costNames)
-                   subplot(length(costNames), 1, n)
-                   line = get(gca,'Children');
-                   set(line, 'XData', [get(line, 'XData'), iteration], 'YData', [get(line, 'YData'), cost.(costNames{n})]); 
-                end
-                figure(cstrlines)
-                for n = 1:length(cstrNames)
-                   subplot(length(cstrNames), 1, n)
-                   line = get(gca,'Children');
-                   set(line,'XData', [get(line,'XData'), iteration], 'YData', [get(line,'YData'), cstr.(cstrNames{n})]);
-                end
-            end
+%             % Make a figure
+%             if iteration  == 1
+%                 % Plot the figures
+%                 costlines = figure();
+%                 for n = 1:length(costNames)
+%                    subplot(length(costNames),1, n);
+%                    plot(iteration, sum(cost.(costNames{n})),'k');
+%                    ylabel(costNames{n});
+%                 end
+%                 xlabel('Iterations');
+%                 
+%                 % Plot the constraints
+%                 cstrlines = figure();
+%                 for n = 1:length(cstrNames)
+%                     subplot(length(cstrNames), 1, n)
+%                     plot(iteration, sum(cstr.(cstrNames{n})), 'k');
+%                     ylabel(cstrNames{n})
+%                 end
+%                 xlabel('Iterations');
+%             else
+%                 figure(costlines)
+%                 for n = 1:length(costNames)
+%                    subplot(length(costNames), 1, n)
+%                    line = get(gca,'Children');
+%                    set(line, 'XData', [get(line, 'XData'), iteration], 'YData', [get(line, 'YData'), sum(cost.(costNames{n}))]); 
+%                 end
+%                 figure(cstrlines)
+%                 for n = 1:length(cstrNames)
+%                    subplot(length(cstrNames), 1, n)
+%                    line = get(gca,'Children');
+%                    set(line,'XData', [get(line,'XData'), iteration], 'YData', [get(line,'YData'), sum(cstr.(cstrNames{n}))]);
+%                 end
+%             end
             % Increment iteration count
             iteration = iteration + 1;
             
         end
-        function [costVals, cstrVals] = calculateCostsAndConstraints(obj,z)
+        function [costVals, cstrViol, cstrVal] = calculateCostsAndConstraints(obj,z)
             
             
             %% Cost function Values
@@ -1065,15 +1077,16 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             costVals = struct();
             % Sum the common costs
             for n = 1:length(uniqueNames)
-               costVals.(uniqueNames{n}) = sum(costs(id == n)); 
+               costVals.(uniqueNames{n}) = costs(id == n); 
             end
             
             %% Constraint Values
             numCstr = length(obj.nlcon);
-            cstr = zeros(1,numCstr);
+            val = cell(1,numCstr);
+            viols = zeros(1,numCstr);
             cstrName = cell(1,numCstr);
             % Calculate the values of the constraints
-            for n = 1:numCstr
+            for n = 1:length(obj.nlcon)
                % Get the variable indices
                inds = obj.nlcon_xind{n};
                % Get the variables
@@ -1082,21 +1095,42 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                   args{k} = z(inds{k}); 
                end
                % Now get the value of the constraint
-               val = obj.nlcon{n}.eval_handle(args{:});
+               val{n} = obj.nlcon{n}.eval_handle(args{:});
                % Calculate the maximum violation
-               viol = max(obj.nlcon{n}.lb - val, val - obj.nlcon{n}.ub);
+               viol = max(obj.nlcon{n}.lb - val{n}, val{n} - obj.nlcon{n}.ub);
                % Eliminate the infinities
                viol(isinf(viol)) = 0;
                % Take the norm
-               cstr(n) = norm(viol);
+               viols(n) = norm(viol);
                % Add to the associated labeled constraint
                cstrName{n} = obj.nlcon{n}.name{1};
             end
+%             for n = 1:length(obj.bbcon)
+%                 % Get the arguments to the bounding box constraints
+%                 k = length(obj.nlcon) + n;
+%                 inds = obj.bbcon_xind{n};
+%                 args = z(inds);
+%                 % Get the value of the constraints
+%                 val{k} = obj.bbcon{n}.A * args;
+%                 viol = max(obj.bbcon{n}.lb - val{k}, val{k} - obj.bbcon{n}.ub);
+%                 viol(isinf(viol)) = 0;
+%                 viols(n) = norm(viol);
+%                 cstrName{k} = obj.bbcon{n}.name{1};
+%             end
             % Sum the common constraints
             [uniqueNames, ~, id] = unique(cstrName);
-            cstrVals = struct();
+            cstrVal = struct();
+            cstrViol = struct();
             for n = 1:length(uniqueNames)
-               cstrVals.(uniqueNames{n}) = sum(cstr(id == n)); 
+                cstrVal.(uniqueNames{n}) = cat(2,val{id == n});
+                cstrViol.(uniqueNames{n}) = viols(id == n);
+            end
+        end
+        function cstrVals = calculatContactConstraints(obj, z)
+            %% calculateContactConstraints: Helper function for calculating contact constraints
+            cstrVals = zeros(obj.numContacts * (2 + obj.numFriction), obj.N-1);
+            for n = 1:obj.N-1
+               cstrVals(:,n) =  obj.contact_constraint_fun(z([obj.x_idns(:,n+1); obj.lambda_inds(:,n)]));
             end
         end
     end

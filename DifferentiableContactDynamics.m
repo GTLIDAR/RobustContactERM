@@ -380,7 +380,7 @@ classdef DifferentiableContactDynamics
             % quantities
             iA = 1; % Body A is the manipulator (the only body in the problem)
             iB = 0; % Body B is the terrain
-            
+                 
             % Friction is a property of the terrian
             mu = obj.terrain.friction_coeff;
             
@@ -420,6 +420,9 @@ classdef DifferentiableContactDynamics
             N = N';
             D{1} = D{1}';
             D{2} = D{2}';
+            
+            % Extend friction coefficient so there is 1 for every contact
+            mu = mu * ones(length(phi),1);
         end
         function obj = setupLCPCache(obj, t)
            % Set-up a cache for storing LCP results
@@ -434,6 +437,53 @@ classdef DifferentiableContactDynamics
            obj.cacheFlag = true;
         end
     end
-    
+    %% For drawing
+    methods (Static)
+        function [x, y] = drawLinkage(x0, y0, len, radius, phi)
+            %% DRAWLINKAGE: Visualization method for generating drawings of linkages
+            %
+            %   drawLinkage can be used to draw 2D linkages in arbitrary
+            %   configuruations. drawLinkage returns (x,y) coordinates for
+            %   the boundary of a planar straight linkage with semicircular
+            %   ends. 
+            %
+            %   Arguments
+            %       x0: Scalar x coordinate for the horizontal origin of the linkage
+            %       y0: Scalar y coordiante for the vertical origin of the linkage
+            %       l:  Scalar length of the linkage
+            %       r:  Scalar radius (half-width) of the linkage
+            %       phi:    Orientation of the linkage with respect to the
+            %       x-axis
+            %
+            %   Return Values:
+            %       x: vector of x-coordinates for drawing the linkage
+            %       y: vector of y-coordinates for drawing the linkage
+            %
+            %   Note: The length of the returned linkage is increased by 2r
+            %   due to the circular endcaps
+            %
+            %   Using the output of drawLinkage, plot(x,y) should create an
+            %   image of the linkage.
+            %% Draw a standard linkage
+            th = pi*(0:0.01:1);
+            x = [0, radius*cos(th + pi/2), 0, len, radius*cos(th+ 3*pi/2)+len, len, 0];
+            y = [radius, radius*sin(th+pi/2), -radius, -radius, radius*sin(th+3*pi/2), radius, radius];
+            
+            %% Transform the standard linkage into the new linkage
+            % Create the shifting, scaling, and rotation transforms
+            Shift = eye(3);
+            Shift(1:2,3) = [x0; y0];
+            Rot = eye(3);
+            Rot(1:2,1:2) = [cos(phi), -sin(phi);
+                sin(phi), cos(phi)];
+            % Combine the points into one array
+            P0 = [x; y; ones(1,length(x))];
+            % Transform
+            P = Shift * Rot * P0;
+            
+            x = P(1,:);
+            y = P(2,:);
+        end
+    end
 end
 

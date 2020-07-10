@@ -1,14 +1,16 @@
 classdef SingleLegHopper <  Manipulator & DifferentiableContactDynamics 
     
     properties
-        blockMass (1,1) double {mustBePositive, mustBeFinite} = 10;
+        baseMass (1,1) double {mustBePositive, mustBeFinite} = 10;
         masses(2,1) double {mustBePositive, mustBeFinite} = [1,1];
         lengths(2,1) double {mustBeNonnegative, mustBeFinite} = [1 1];
         com(2,1) double = [1/2, 1/2];
-        inertias(2,1) double = [1, 1];
+        inertias(2,1) double = [1/12, 1/12];
     end
     properties (Hidden)
-        block_radius(1,1) double = 0.25;
+        base_radius(1,1) double = 0.25;
+        numQ = 4;
+        numU = 2;
     end
     
 methods
@@ -18,9 +20,7 @@ methods
         nQ = 4;
         nU = 2;
         self = self@Manipulator(nQ, nU);
-        
-        self = self.setInputLimits(-1000,1000);
-        
+                
         if nargin > 0
             if ~isempty(varargin{1})
             	self.masses = varargin{1};
@@ -87,106 +87,154 @@ methods
        end
     end
     %% ---------------- DYNAMIC PROPERTIES --------------------- %%
-    function [M, dM] = massMatrix(self, q)
-        
-        % Calculate some geometric constants
-        mT = sum(self.masses) + self.blockMass;
-        g1 = self.lengths(1)*(self.masses(2) + self.com(1)*self.masses(1));
-        g2 = self.com(2)*self.lengths(2)*self.masses(2);
-        g3 = self.masses(2)*(self.com(2)*self.lengths(2))^2;
-        g4 = self.com(2)*self.lengths(2)*self.lengths(1)*self.masses(2);
-        g5 = (self.masses(1)*self.com(1)^2 + self.masses(2))*self.lengths(1)^2;
-
-        % Calculate the diagonals of the mass matrix
-        diagM = [mT;
-              mT;
-              g5 + self.inertias(1) + g3 + 2*g4*cos(q(4));
-              self.inertias(2) + g3];
-        % Calculate the upper triangle of the mass matrix
-        M = zeros(4);
-        
-        M(1,4) = g2*cos(q(3) + q(4));
-        M(2,4) = g2*sin(q(3) + q(4));
-        
-        M(1,3) = g1*cos(q(3)) + M(1,4);
-        M(2,3) = g1*sin(q(3)) + M(2,4);
+    function [M, dM, HM] = massMatrix(self, q)
+       %% Returns the Generalized Mass Matrix for the System
+       %
+       %
        
-        M(3,4) = self.inertias(2) + g3 + g4*cos(q(4));
-        
-        % Use symmetry to fill in the remaining elements and fill in the
-        % diagonals
-        M = M + M' + diag(diagM);
-        
-        % The derivatives of the mass matrix wrt the configuration
-        % variables
-        if nargout == 2
-            dM = zeros(4,4,4);
-            dM(1,3:4,3) = -M(2,3:4);
-            dM(2,3:4,3) =  M(1,3:4);
-            dM(:,:,3) = dM(:,:,3) + dM(:,:,3)';
-            
-            dM(1,3:4,4) = -M(2,4);
-            dM(2,3:4,4) =  M(1,4);
-            dM(3,3:4,4) = [-1,-1]*g4*sin(q(4));
-            dM(:,:,4) = dM(:,:,4) + dM(:,:,4)';
-        end
+       %% Calculate Inertial constants
+       % Constants
+       k1 = self.baseMass + sum(self.masses);
+       k2 = self.inertias(2) + self.masses(2) * (self.com(2) * self.lengths(2))^2;
+       k3 = self.inertias(1) + (self.masses(1)  * self.com(1)^2 + self.masses(2)) * self.lengths(1)^2;
+       % Sine / Cosine Multipliers
+       g1 = (self.masses(1)*self.com(1) + self.masses(2))*self.lengths(1);
+       g2 = (self.masses(2)*self.com(2))*self.lengths(2);
+       g3 = g2 * self.lengths(1);
+       
+       %% Sine and Cosine
+       s1 = sin(q(3));
+       s2 = sin(q(4));
+       c1 = cos(q(3));
+       c2 = cos(q(4));
+       s12 = sin(q(3) + q(4));
+       c12 = cos(q(3) + q(4));
+       
+       %% Construct the Mass Matrix
+       % Diagonals
+       dM = [k1, k1, k2 + k3 + 2*(g3 * c2),k3];
+       % Upper Triangle
+       M = zeros(4);
+       M(1,4) = g2*c12;
+       M(1,3) = g1*c1 + M(1,4);
+       M(2,4) = g2 * s12;
+       M(2,3) = g1 * s1 + M(2,4);
+       M(3,4) = k2 + g3*c2;
+       % Construct the Mass Matrix:
+       M = M + M' + diag(dM);
+       
+       dM = zeros(4,4,4);
+       HM = zeros(4,4,4);
+       % Calculate the first derivative of the mass matrix
+       if nargout >= 2         
+           % Gradient wrt q4
+           dM(1,:,4) = -[0,0,g2*s12, g2*s12];
+           dM(2,:,4) =  [0,0,g2*c12, g2*c12];
+           dM(3,:,4) = [0,0, -g3*s2,  -g3*s2];
+           dM(:,:,4) = dM(:,:,4) + dM(:,:,4)';
+           
+           % Gradient wrt q5
+           dM(1,:,3) = dM(1,:,4) - [0, 0, g1 * s1, 0];
+           dM(2,:,3) = dM(2,:,4) + [0, 0, g1 * c1, 0];
+           dM(:,:,3) = dM(:,:,3) + dM(:,:,3)';
+           
+           % Calculate the Hessian of the Mass Matrix
+           if nargout >= 3
+               
+               % Only the Hessians related to the joint angles matter
+               % Hessians q4
+               HM(1,3:4,4,4) = -g2*c12*[1,1];
+               HM(2,3:4,4,4) = -g2*s12*[1,1];
+               HM(3,3:4,4,4) = -g3*c2*[1,1];
+               HM(1,3:4,4,3) = -g2*c12*[1,1];
+               HM(2,3:4,4,3) = -g2*s12*[1,1];
+                           
+               % Hessians q3
+               HM(:,:,3,4) = HM(:,:,4,3);
+               HM(1:2,:,3,3) = HM(1:2,:,4,3);
+               HM(1,3,3,3) = HM(1,3,3,3) - g1*c1;
+               HM(2,3,3,3) = HM(2,3,3,3) - g1*s1;
+               
+               % Symmetrize the Hessians
+               HM = HM + permute(HM, [2,1,3,4]);
+           end
+       end
+       
+       
+       
     end
-    function [C, dC] = coriolisMatrix(self, q, qdot)
-        C = zeros(4);
-        
-        % Pre-calculate some geometric constants
-        g1 = self.lengths(1)*(self.masses(2) + self.com(1)*self.masses(1));
-        g2 = self.com(2)*self.lengths(2)*self.masses(2);
-        g4 = self.com(2)*self.lengths(2)*self.lengths(1)*self.masses(2);
-        
-        % Fill in the nonzero components of the Coriolis Matrix
-        C(1,4) = - g2 * sin(q(3) + q(4)) * (qdot(3) + qdot(4));
-        C(2,4) =   g2 * cos(q(3) + q(4)) * (qdot(3) + qdot(4));
-        C(1,3) = - g1 * qdot(3) * sin(q(3)) + C(1,4); 
-        C(2,3) =   g1 * qdot(3) * cos(q(3)) + C(2,4);
-        C(3,3) = - g4 * sin(q(4)) * qdot(4);
-        C(3,4) = - g4 * sin(q(4)) * (qdot(3) + qdot(4));
-        C(4,3) =   g4 * sin(q(4)) * qdot(3);
-        
-        if nargout == 2
-           dC = zeros(4,4,8); 
-           % Deriv wrt theta_1 (q(3))
-           dC(1,:,3) = -C(2,:);
-           dC(2,:,3) = C(1,:);
-           % Deriv wrt theta_2 (q(4))
-           dC(1,3:4,4) = -C(2,4);
-           dC(2,3:4,4) = C(1,4);
-           dC(3,3:4,4) = -g4*cos(q(4))*[qdot(4), qdot(3)+qdot(4)];
-           dC(4,3,4) = g4*cos(q(4))*qdot(3);
-           % Deriv wrt theta_2_dot (dq(4))
-           dC(1,3:4,8) = -g2 * sin(q(3)+q(4));
-           dC(2,3:4,8) = g2 * cos(q(3) + q(4));
-           dC(3,3:4,8) = -g4*sin(q(4));
-           % Deriv wrt theta_1_dot (dq(3))
-           dC(1:3,4,7) = dC(1:3,4,8);
-           dC(1:2,3,7) = dC(1:2,3,8) + g1 *[-sin(q(3)); cos(q(3))];
-           dC(4,3,7) = -dC(3,3,8);
-        end
+    function [C, dC] = coriolisMatrix(self, q, dq)
+            %% CORIOLISMATRIX: Matrix of Coriolis and Centripetal Effects
+            %
+            %   [C,dC] = coriolisMatrix(plant, q, dq) returns the matrix of
+            %   Coriolis and Centripetal Effects, C, and its gradient, dC,
+            %   for the PLANT model at configuration q and configuration
+            %   rate dq. The Coriolis Matrix is used in the calculation of
+            %   the PLANT dynamics:
+            %
+            %       M*ddq + C*dq + N = B*u
+            %
+            %   ARGUMENTS:
+            %       PLANT:  a DIFFERENTIABLELAGRANGIAN Model
+            %       q:      nQ x 1 vector of configuration variables
+            %       dq:     nQ x 1 vector of configuration rates
+            %
+            %   RETURN VALUES:
+            %       C:      nQ x nQ double matrix of Coriolis and
+            %           centripetal effects
+            %       dC:     nQ x nQ x 2nQ array of gradients for the 
+            %           Coriolis matrix C. The first nQ pages are the
+            %           gradients with respect to q, the second nQ pages
+            %           are the gradients with respect to dq
+            
+            % Get the mass matrix gradient and Hessian to calculate the Coriolis Matrix
+            [M, dM, d2M] = self.massMatrix(q);
+            % Calculate the chirstoffel symbols
+            G = 0.5 * (dM + permute(dM, [1,3,2]) - permute(dM, [3,2,1]));
+            % Calculate the partials of the Christoffel symbols
+            dG = 0.5 * (d2M + permute(d2M,[1,3,2,4]) - permute(d2M, [3,2,1,4]));
+            % Calculate the Coriolis Matrix and its gradient using tensor multiplication
+            C = times(G,reshape(dq,1,1,self.numQ));
+            C = squeeze(sum(C,3));
+            dG = times(dG, reshape(dq,1,1,self.numQ,1));
+            dC = squeeze(sum(dG,3));
+            % The gradient wrt dq is the Christoffel Symbols, G
+            dC = cat(3, dC, G);   
     end
     function [N, dN] = gravityMatrix(self, q)
-        % Returns gravity and conservative forces for the Pendulum Driven
-        % Cart
-        g1 = self.lengths(1)*(self.masses(2) + self.com(1)*self.masses(1));
-        g2 = self.com(2)*self.lengths(2)*self.masses(2);
+
         
+        % Inertial Constants
+        k1 = self.baseMass + sum(self.masses);
+        g1 = (self.masses(1)*self.com(1) + self.masses(2))*self.lengths(1);
+        g2 = self.masses(2)*self.com(2)*self.lengths(2);
+        
+        % Sines and Cosines
+        s1 = sin(q(3));
+        c1 = cos(q(3));
+        s12 = sin(q(3) + q(4));
+        c12 = cos(q(3) + q(4));
+       
+        
+        % Gravity Matrix
         N = zeros(4,1);
-        N(2) = sum(self.masses) + self.blockMass;
-        N(4) = g2*sin(q(3)+q(4)); 
-        N(3) = g1*sin(q(3)) + N(4);
+        N(2) = k1;
+        N(4) = g2*s12;
+        N(3) = g1*s1 + N(4);
         
-        N = N * 9.81;
+        N = 9.81 * N;
         
+        % Gradient of the gravitational effects
         if nargout == 2
-           dN = zeros(4,4); 
-           dN(3:4,3:4) = g2*cos(q(3)+q(4));
-           dN(3,3) = dN(3,3) + g1*cos(q(3));
+           dN = zeros(4);
+          
+           dN(3:4,4) = g2*c12*[1;1];
+           dN(3:4,3) = dN(3:4,4);
+           dN(3,3) = dN(3,3) + g1*c1;
+           
            dN = dN * 9.81;
         end
+        
     end
     function [B, dB] = controllerMatrix(~,~)
       
@@ -201,14 +249,14 @@ methods
         [x,y] = self.positions(q);
         % Calculate the corners of the block
         th = -pi:0.01:pi;
-        block_x = x(1) + self.block_radius * cos(th);
-        block_y = y(1) + self.block_radius * sin(th);
+        block_x = x(1) + self.base_radius * cos(th);
+        block_y = y(1) + self.base_radius * sin(th);
         % Create a single data vector for plotting
         x = [block_x, nan, x];
         y = [block_y, nan, y];
         % Set x and y limits
-        xrange = sum(self.lengths) + self.block_radius;
-        yrange = sum(self.lengths) + self.block_radius;
+        xrange = sum(self.lengths) + self.base_radius;
+        yrange = sum(self.lengths) + self.base_radius;
         xlims = [x(1)-xrange,x(1)+xrange];
         ylims = [y(1)-yrange, y(1) + yrange];
         % Create the floor
@@ -228,7 +276,7 @@ methods
         end
     end
     function m = totalMass(self)
-       m = self.blockMass + sum(self.masses); 
+       m = self.baseMass + sum(self.masses); 
     end
     function q = inverseKinematics(obj, x)
         %% INVERSE KINEMATICS: Calculates configuration variables from cartesian positions

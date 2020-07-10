@@ -41,8 +41,16 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             if nargin < 4
                 options = struct();
             end
-            if ~isfield(options, 'contactCostMultiplier')
-                options.contactCostMultiplier = 1;
+            if isfield(options, 'contactCostMultiplier') && options.contactCostMultiplier ~= 0
+                options.frictionCostMultiplier = options.contactCostMultiplier;
+                options.distanceCostMultiplier = options.contactCostMultiplier;
+            else
+                if ~isfield(options, 'frictionCostMultiplier')
+                    options.frictionCostMultiplier = 1;
+                end
+                if ~isfield(options, 'distanceCostMultiplier')
+                    options.distanceCostMultiplier = 1;
+                end
             end
             if ~isfield(options, 'uncertainty_source')
                 options.uncertainty_source = RobustContactImplicitTrajectoryOptimizer.NO_UNCERTAINTY;
@@ -68,7 +76,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             end
             % Check for the ERM Cost Method
             if ~isfield(options, 'ermMode')
-                options.ermMode = RobustContactImplicitTrajectoryOptimizer.ERM_COMBINED;
+                options.ermMode = RobustContactImplicitTrajectoryOptimizer.ERM_OBJECTIVE;
             end
             % Check for a distance scaling
             if ~isfield(options, 'distanceScaling')
@@ -77,6 +85,10 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             % Check for an ERM space scaling
             if ~isfield(options, 'ermSpace')
                options.ermSpace = RobustContactImplicitTrajectoryOptimizer.ERM_LINEARSPACE; 
+            end
+            % Check for a bias for friction 
+            if ~isfield(options, 'ermFrictionBias')
+               options.ermFrictionBias = 0; 
             end
             % Pass construction to the parent class
             obj = obj@ContactImplicitTrajectoryOptimizer(plant, N, duration, options);
@@ -154,6 +166,19 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
         end
     end
     methods
+        function cstrVals = calculateContactConstraints(obj, z)
+           %% calculateContactConstraints: Helper function for calculating the complementarity constraints
+           cstrVals = struct();
+           cstrVals.normalDistance = zeros(obj.numContacts, obj.N-1);
+           cstrVals.slidingVelocity = zeros(obj.numFriction*obj.numContacts, obj.N-1);
+           cstrVals.frictionCone = zeros(obj.numContacts, obj.N-1);
+           
+           for n = 1:obj.N-1
+               cstrVals.normalDistance(:,n) = obj.normalDistanceConstraint([z(obj.x_inds(:,n+1)); z(obj.lambda_inds(obj.normal_inds, n))]);
+               cstrVals.slidingVelocity(:,n) = obj.slidingVelocityConstraint(z([obj.x_inds(:,n+1); obj.lambda_inds(obj.normal_inds,n); obj.lambda_inds(obj.gamma_inds,n); obj.lambda_inds(obj.tangent_inds,n)]));
+               cstrVals.frictionCone(:,n) = obj.frictionConeConstraint(z([obj.lambda_inds(obj.normal_inds,n); obj.lambda_inds(obj.tangent_inds,n); obj.lambda_inds(obj.gamma_inds,n)]));
+           end
+        end
         %% ---------------- FRICTION CONE -------------------- %%
         function [f, df] = frictionConeDefect(obj, lambda)
             
@@ -162,17 +187,8 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             [~, ~, ~, ~, ~, ~, ~, mu] = obj.plant.contactConstraints(zeros(nQ, 1), false, obj.options.active_collision_options);
             
             % Get the forces from lambda
-            nL = numel(lambda);
-            skip = 2 + obj.numFriction;
-            T_idx = 1:nL;
-            % Normal force
-            N_idx = 1:skip:nL;
-            lambda_N = lambda(N_idx);
-            
-            % Tangential force
-            G_idx = skip:skip:nL;
-            T_idx([N_idx,G_idx]) = [];
-            lambda_T = lambda(T_idx);
+            lambda_N = lambda(obj.normal_inds);
+            lambda_T = lambda(obj.tangent_inds);
             % Create a matrix to select and sum up the frictional forces
             % for each contact
             S = zeros(obj.numContacts, obj.numContacts * obj.numFriction);
@@ -180,10 +196,10 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 S(n,obj.numFriction * (n-1) + 1: obj.numFriction * n) = 1;
             end
             % Calculate the friction cone defect.
-            f = mu*lambda_N - S * lambda_T;
-            df = zeros(obj.numContacts, nL);
-            df(:, N_idx) = eye(obj.numContacts) * mu;
-            df(:,T_idx) = -S;
+            f = mu.*lambda_N - S * lambda_T;
+            df = zeros(obj.numContacts, numel(lambda));
+            df(:, obj.normal_inds) = diag(mu);
+            df(:,obj.tangent_inds) = -S;
         end
         function [f, df] = frictionConeConstraint(obj, y)
             % For the friction cone constraint, the variable y is stored as:
@@ -198,13 +214,19 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             %    This function is intended to be used with the
             %    NonlinearComplementarityConstraint class.
             
-            % Re-order the decision variables to be used with the defect
-            % function (use a matrix so it's invertible).
-            lambda = obj.force_converter*y;
-            [f, df] = obj.frictionConeDefect(lambda);
+            % Recover the forces from the decision variables
+            lambda = zeros(size(y));
+            lambda(obj.normal_inds) = y(1:obj.numContacts);
+            lambda(obj.tangent_inds)= y(obj.numContacts+1:obj.numContacts*(1+obj.numFriction));
+            lambda(obj.gamma_inds) = y(obj.numContacts*(1+obj.numFriction)+1:obj.numContacts*(2 + obj.numFriction));
+            % Calculate the defects
+            [f, dg] = obj.frictionConeDefect(lambda);
             f = f(:);
-            % Re-order the columns of df
-            df = df*obj.force_converter;
+            % Re-order the columns of the derivative
+            df = zeros(size(dg));
+            df(:,1:obj.numContacts) = dg(:,obj.normal_inds);
+            df(:,obj.numContacts+1:obj.numContacts*(1 + obj.numFriction)) = dg(:, obj.tangent_inds);
+            df(:, obj.numContacts*(1 + obj.numFriction) + 1 : obj.numContacts*(2 + obj.numFriction)) = dg(:, obj.gamma_inds);
         end
         function [f, df] = frictionConeERMCost(obj, lambda)
             %% FRICTIONCONEERMCOST: Expected Residual for uncertain friction cones
@@ -228,26 +250,23 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             [z, dz] = obj.frictionConeDefect(lambda);
             % Get the sliding velocity and it's gradient
             nL = numel(lambda);
-            skip = 2 + obj.numFriction;
-            G_idx = skip:skip:nL;
-            gamma = lambda(G_idx);
+            gamma = lambda(obj.gamma_inds);
             dgamma = zeros(obj.numContacts, nL);
-            dgamma(:,G_idx) = eye(obj.numContacts);
+            dgamma(:,obj.gamma_inds) = eye(obj.numContacts);
             
             % Calculate the ERM Variance
-            N_idx = 1:skip:nL;
-            lambda_N = lambda(N_idx);
-            sigma = obj.options.frictionVariance * lambda_N;
+            lambda_N = lambda(obj.normal_inds);
+            sigma = obj.options.frictionVariance * lambda_N + obj.options.ermFrictionBias;
             dsigma = zeros(obj.numContacts, nL);
-            dsigma(:, N_idx) = eye(obj.numContacts) * obj.options.frictionVariance;
+            dsigma(:, obj.normal_inds) = eye(obj.numContacts) * obj.options.frictionVariance;
             
             % Get the ERM cost
             [f, df] = obj.ermCost(gamma, z, sigma);
             % Calculate the total differential cost
             df = df * [dgamma; dz; dsigma];
             % Sum over all contacts
-            f = obj.options.contactCostMultiplier * sum(f, 1);
-            df = obj.options.contactCostMultiplier * sum(df, 1);
+            f = obj.options.frictionCostMultiplier * sum(f, 1);
+            df = obj.options.frictionCostMultiplier * sum(df, 1);
             
         end
         %% --------------- NORMAL DISTANCE ----------------- %%
@@ -281,6 +300,9 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             % Expand the derivative of the distance function
             dphi = [zeros(obj.numContacts, 1), Jn, zeros(obj.numContacts, nQ + nL)];
             % Expand the hessian of the distance
+            % Reshape the gradients
+            dJn = reshape(dJn',[nQ, nQ, obj.numContacts]);
+            dJn = permute(dJn,[3,1,2]);
             d2phi = zeros(obj.numContacts, 1 + 2*nQ + nL, 1 + 2 * nQ + nL);
             d2phi(:,2:nQ+1, 2:nQ+1) = dJn;
             % Initialize the Hessian for the normal force
@@ -362,8 +384,8 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 f = log(f + ep);
             end
             % Sum over all contacts
-            f = obj.options.contactCostMultiplier * sum(f, 1);
-            df = obj.options.contactCostMultiplier * sum(df, 1);
+            f = obj.options.distanceCostMultiplier * sum(f, 1);
+            df = obj.options.distanceCostMultiplier * sum(df, 1);
             
         end
         function [f, df] = normalDistanceERMSeparated(obj, w)
@@ -470,10 +492,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             dJt = cat(1,dJt{:});
             % Separate out the forces
             nL = numel(lambda);
-            skip = 2 + obj.numFriction;
-            % Sliding velocity slack
-            G_idx = skip:skip:nL;
-            gamma = lambda(G_idx);
+            gamma = lambda(obj.gamma_inds);
             % Loop over the number of contacts and calculate the sliding
             % velocity defect
             f = zeros(obj.numContacts * obj.numFriction, 1);
@@ -485,7 +504,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 f(rangeIdx) = gamma(n) + Jt(n:obj.numContacts:end,:) * dq;
                 dJt_dq = squeeze(sum(dJt(n:obj.numContacts:end,:,:) .* dq', 2));
                 df(rangeIdx, 1:nX) = [dJt_dq, Jt(n:obj.numContacts:end,:)];
-                df(rangeIdx, nX + G_idx(n)) = 1;
+                df(rangeIdx, nX + obj.gamma_inds(n)) = 1;
             end
         end
         function [f, df] = slidingVelocityConstraint(obj,y)
@@ -494,19 +513,20 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             nX = obj.plant.getNumStates();
             x = y(1:nX);
             % Re-order the lambda-variables so we can use them
-            lambda = y(nX+1:nX + obj.numContacts*(2+obj.numFriction));
-            lambda = [lambda(1:obj.numContacts); lambda(2*obj.numContacts+1:end); lambda(obj.numContacts + 1:2*obj.numContacts)];
-            
-            lambda = obj.force_converter * lambda;
-            
+            lambda = zeros(1,obj.numContacts*(2 + obj.numFriction));
+            lambda(obj.normal_inds) = y(nX+1:nX+obj.numContacts);
+            lambda(obj.tangent_inds) = y(nX + 2*obj.numContacts + 1:nX + obj.numContacts*(2 + obj.numFriction));
+            lambda(obj.gamma_inds) = y(nX + obj.numContacts +1: nX + 2*obj.numContacts);            
             % Get the defects
             [f, df] = obj.slidingVelocityDefect(x, lambda);
             f = f(:);
             % Re-order the columns of df_lambda
             df_lambda = df(:,nX+1:end);
-            df_lambda = df_lambda * obj.force_converter;
-            df_lambda = [df_lambda(:, 1:obj.numContacts), df_lambda(:, obj.numContacts*(obj.numFriction+1)+1:end),df_lambda(:, obj.numContacts+1:obj.numContacts*(obj.numFriction+1))];
-            df(:,nX+1:end) = df_lambda;
+            df_y = zeros(size(df_lambda));
+            df_y(:, 1:obj.numContacts) = df_lambda(:, obj.normal_inds);
+            df_y(:, obj.numContacts+1 : 2*obj.numContacts) = df_lambda(:, obj.gamma_inds);
+            df_y(:, 2*obj.numContacts+1 : obj.numContacts*(2+obj.numFriction)) = df_lambda(:, obj.tangent_inds);
+            df(:,nX+1:end) = df_y;
         end
         function [f, df] = slidingVelocityCost(obj, x1, lambda)
             %% SLIDINGVELOCITYMINCOST: Deterministic cost for the sliding velocity constraints
@@ -514,13 +534,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             [z, dz] = obj.slidingVelocityDefect(x1, lambda);
             nX = obj.plant.getNumStates();
             % Get the tangential forces
-            nL = numel(lambda);
-            skip = 2 + obj.numFriction;
-            T_idx = 1:nL;
-            N_idx = 1:skip:nL;
-            G_idx = skip:skip:nL;
-            T_idx([N_idx,G_idx]) = [];
-            lambda_T = lambda(T_idx);
+            lambda_T = lambda(obj.tangent_inds);
             % Gradient of the tangential forces
             dlambda_T = zeros(size(dz));
             dlambda_T(:, nX + T_idx) = eye(length(lambda_T));
@@ -612,7 +626,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 obj = obj.addCost(friction, frictionIdx);
             end
             % If desired, also add in the friction constraint
-            if obj.options.erm_mode == RobustConactImplictTrajectoryOptimizer.ERM_COMBINED
+            if obj.options.ermMode == RobustContactImplicitTrajectoryOptimizer.ERM_COMBINED
                obj = obj.addFrictionConstraint(); 
             end
         end
@@ -620,9 +634,9 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             %% addSlidingConstraint: adds the complementarity constraint for sliding velocity to the problem
             % Create a Comlementarity Constraint for sliding
             sliding = RelaxedNonlinearComplementarityConstraint(@obj.slidingVelocityConstraint, obj.plant.getNumStates()+2*obj.numContacts, obj.numContacts*obj.numFriction, obj.options.nlcc_mode, obj.options.compl_slack);
-            for n = 1:length(sliding.constraints)
-                sliding.constraints{n} = sliding.constraints{n}.setName(sprintf('SlidingVelocityConstraint'));
-            end
+            sliding.constraints{1} = sliding.constraints{1}.setName('FrictionForceNonneg');
+            sliding.constraints{2} = sliding.constraints{2}.setName('TangentVelocityNonneg');
+            sliding.constraints{3} = sliding.constraints{3}.setName('TangentVelocityCompl');
             % Add the constraint at every knot point
             for i = 1:obj.N-1
                 % Order the indices such that the argument is 
@@ -639,9 +653,9 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             %% addFrictionConstraint: adds the complementarity constraint for the friction cone to the optimization problem
             % Create a complementarity constraint for the friction cone
              friction = RelaxedNonlinearComplementarityConstraint(@obj.frictionConeConstraint, obj.numContacts*(1+obj.numFriction), obj.numContacts, obj.options.nlcc_mode, obj.options.compl_slack);
-             for n = 1:length(friction.constraints)
-                friction.constraints{n} = friction.constraints{n}.setName(sprintf('FrictionConeConstraint')); 
-             end
+             friction.constraints{1} = friction.constraints{1}.setName('SlidingNonneg');
+             friction.constraints{2} = friction.constraints{2}.setName('FrictionConeNonneg');
+             friction.constraints{3} = friction.constraints{3}.setName('FrictionConeCompl');
              % Add the constraint to every knot point                   
              for i = 1:obj.N-1
                  % Reshape all the lambda_inds so the forces are grouped together as [normal, tangential, slack]
@@ -657,9 +671,9 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             %% addDistanceConstraint: adds the complementarity constraint for normal distance to the optimization problem 
             % Create a complementarity constraint for the normal distance
             distance = RelaxedNonlinearComplementarityConstraint(@obj.normalDistanceConstraint, obj.plant.getNumStates(), obj.numContacts, obj.options.nlcc_mode, obj.options.compl_slack);
-            for n = 1:length(distance.constraints)
-                 distance.constraints{n} = distance.constraints{n}.setName(sprintf('NormalDistanceConstraint'));
-            end
+            distance.constraints{1} = distance.constraints{1}.setName('NormalForceNonNeg');
+            distance.constraints{2} = distance.constraints{2}.setName('NormalDistanceNonNeg');
+            distance.constraints{3} = distance.constraints{3}.setName('NormalDistanceCompl');
             % Add the constraint at every knot point
             for i = 1:obj.N-1
                 % For distance, we only need [x, lambdaN];

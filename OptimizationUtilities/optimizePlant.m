@@ -62,7 +62,13 @@ end
 % Add in the final cost
 if isfield(optimOptions, 'finalCost') && ~isempty(optimOptions.finalCost)
     fprintf('Adding terminal cost\n');
-    prob = prob.addFinalCost(optimOptions.finalCost);
+    if ~isstruct(optimOptions.finalCost)
+        prob = prob.addFinalCost(optimOptions.finalCost);
+    else
+        for n = 1:length(optimOptions.finalCost)
+            prob = prob.addFinalCost(optimOptions.finalCost(n).cost, optimOptions.finalCost(n).name);
+        end
+    end
 end
 % Add in a differenced cost
 if isfield(optimOptions, 'differenceCost') && ~isempty(optimOptions.differenceCost)
@@ -78,7 +84,7 @@ end
 
 % Add in a force cost
 if isfield(optimOptions, 'forceCost') && ~isempty(optimOptions.forceCost)
-    fpritnf('Adding force cost\n');
+    fprintf('Adding force cost\n');
     if ~isstruct(optimOptions.forceCost)
         prob = prob.addForceCosft(optimOptions.forceCost);
     else
@@ -143,5 +149,7 @@ if prob.nJl > 0
     soln.jltraj = jl;
 end
 
-% Clear the persistent variables, if display is on
+% Get the values of the costs, constraints, and constraint violations
+[soln.costs, soln.cstrViol, soln.cstrVal] = prob.calculateCostsAndConstraints(soln.z);
+soln.contactVals = prob.calculateContactConstraints(soln.z);
 end

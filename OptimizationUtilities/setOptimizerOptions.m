@@ -68,9 +68,12 @@ addParameter(parser, 'distribution', RobustContactImplicitTrajectoryOptimizer.GA
 addParameter(parser, 'heightVariance', 1, isPosScalar);
 addParameter(parser, 'frictionVariance', 1, isPosScalar);
 addParameter(parser, 'ermScaling', RobustContactImplicitTrajectoryOptimizer.NOSCALE, @(x) inrange(x, 1, 3));
-addParameter(parser, 'contactCostMultiplier', 1, isPosScalar);
+addParameter(parser, 'contactCostMultiplier',0 , isNonnegScalar);
 addParameter(parser, 'ermMode',1,@(x) inrange(x, 1, 4));
 addParameter(parser, 'distanceScaling',1, isPosScalar);
+addParameter(parser, 'ermFrictionBias',0, isNonnegScalar);
+addParameter(parser, 'frictionCostMultiplier', 1, isPosScalar);
+addParameter(parser, 'distanceCostMultiplier', 1, isPosScalar);
 % Parse the inputs
 parse(parser, varargin{:});
 % Get the results from the input parser

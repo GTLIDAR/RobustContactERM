@@ -40,6 +40,7 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
         % Parameters for the visualization methods
         cart_height = 1;
         cart_width = 1;
+        link_radius = [0.02,0.02];
     end
    %% ------ Constructor and Required Methods for Manipulator ------ %% 
     methods
@@ -411,6 +412,37 @@ classdef ContactDrivenCart < Manipulator & DifferentiableContactDynamics
                 xlim(xlims);
                 ylim(ylims);
                 
+            end
+        end
+        function [x, y] = visualize(obj, q, ax)
+           %% Visualize
+           
+           if nargin == 2 && nargout == 0
+               figure();
+               ax = gca;
+           end
+           % Get joint positions
+           [x,y] = obj.positions(q);
+           % Get linkage drawing
+           
+           [x_1, y_1] = obj.drawLinkage(x(1), y(1), obj.lengths(1), obj.link_radius(1), 3*pi/2 + q(2));
+           [x_2, y_2] = obj.drawLinkage(x(2), y(2), obj.lengths(2), obj.link_radius(2), 3*pi/2 + q(2) + q(3));
+           % Create the base linkage drawing
+           x_base = x(1) + 1/2*obj.cart_width*[-1, -1, 1, 1, -1];
+           y_base = y(1) + 1/2*obj.cart_height*[1, -1, -1, 1, 1];
+           x_base = [x_base, x_base(end)*ones(1, length(x_1) - length(x_base))];
+           y_base = [y_base, y_base(end)*ones(1, length(y_1) - length(y_base))];
+            % Draw all the linkages
+            if nargout  ==  0
+               hold(ax, 'on');
+               c = lines(3);
+               patch(ax, x_1, y_1, c(2,:));
+               patch(ax, x_2,y_2, c(3,:));
+               patch(ax, x_base, y_base, c(1,:));
+               axis equal;
+            else
+                x = [x_1(:), x_2(:), x_base(:)];
+                y = [y_1(:), y_2(:), y_base(:)];
             end
         end
         function [x, y] = positions(obj,q)

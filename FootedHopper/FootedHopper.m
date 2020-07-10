@@ -10,6 +10,7 @@ classdef FootedHopper <  Manipulator & DifferentiableContactDynamics
     end
     properties (Hidden)
         base_radius(1,1) double = 0.25;
+        link_radius(1,1) double = 0.02;
         numQ = 5;
         numU = 3;
     end
@@ -87,34 +88,37 @@ methods
        % The endpoint Jacobian relates the generalized velocities to the
        % Cartesian coordinate velocities of the end of the second pendulum
        
-       J1 = zeros(2,5);
-       J2 = zeros(2,5);
        
-       J1(1:2,1:2) = eye(2);
-       J2(1:2,1:2) = eye(2);
-       
+       %% Relative Positions of all revolute joints
+       x = [self.lengths(1)*sin(q(3)), self.lengths(2)*sin(q(3)+q(4)), (1-self.heelFraction)*self.lengths(3)*sin(q(3)+q(4)+q(5)),...
+           -self.heelFraction*self.lengths(3)*sin(q(3)+q(4)+q(5))];
        y = [self.lengths(1)*cos(q(3)), self.lengths(2)*cos(q(3)+q(4)), (1-self.heelFraction)*self.lengths(3)*cos(q(3)+q(4)+q(5)),...
            -self.heelFraction*self.lengths(3)*cos(q(3)+q(4)+q(5))];
        
-       x = [self.lengths(1)*sin(q(3)), self.lengths(2)*sin(q(3)+q(4)), (1-self.heelFraction)*self.lengths(3)*sin(q(3)+q(4)+q(5)),...
-           -self.heelFraction*self.lengths(3)*sin(q(3)+q(4)+q(5))];
-
+       %% Toe Jacobian
+       J1 = zeros(2,5);
+       % Base 
+       J1(1:2,1:2) = eye(2); 
+       % Joints
        J1(1,3:5) = y(1:3);
        J1(2,3:5) = x(1:3);
-       
        J1(:,5:-1:3) = cumsum(J1(:,5:-1:3), 2);
-       
-       J2(1,3:5) = [y(1:2),y(4)];
-       J2(2,3:5) = [x(1:2),x(4)];
-       
+       %% Heel Jacobian
+       J2 = zeros(2,5);
+       J2(1:2,1:2) = eye(2);
+       % Base
+       % Joints
+       J2(1,3:5) = y([1,2,4]);
+       J2(2,3:5) = x([1,2,4]);
        J2(:,5:-1:3) = cumsum(J2(:,5:-1:3),2);
-       
+       %% Concatenate the Jacobians together 
        J = [J1;J2];
+       %% Jacobian Derivatives
        if nargout == 2 
           dJ1 = zeros(2,5,5);
           dJ2 = zeros(2,5,5);
           
-          % First contact point
+          % Toe Jacobian Derivatives
           dJ1(1,3:5,5) = -x(3);
           dJ1(2,3:5,5) = y(3);
           dJ1(:,:,4) = dJ1(:,:,5);
@@ -124,7 +128,7 @@ methods
           dJ1(1,3,3) = dJ1(1,3,3)-x(1);
           dJ1(2,3,3) = dJ1(2,3,3)+ y(1);
           
-          % Second contact point
+          % Heel Jacobian Derivative
           dJ2(1,3:5,5) = -x(4);
           dJ2(2,3:5,5) = y(4);
           dJ2(:,:,4) = dJ2(:,:,5);
@@ -134,6 +138,7 @@ methods
           dJ2(1,3,3) = dJ2(1,3,3)-x(1);
           dJ2(2,3,3) = dJ2(2,3,3)+ y(1);
           
+          % Concatenate
           dJ = [dJ1; dJ2];
        end
        
@@ -209,7 +214,7 @@ methods
            dM(3,:,4) = [0,0, -(m3*s2 + m1*s23), -(m1*s23 + m3*s2), -m1*s23];
            dM(:,:,4) = dM(:,:,4) + dM(:,:,4)';
            
-           % Gradient wrt q5
+           % Gradient wrt q3
            dM(1,:,3) = dM(1,:,4) - [0, 0, g1 * s1, 0, 0];
            dM(2,:,3) = dM(2,:,4) + [0, 0, g1 * c1, 0, 0];
            dM(:,:,3) = dM(:,:,3) + dM(:,:,3)';
@@ -366,7 +371,48 @@ methods
             ylim(ylims);
         end
     end
-
+    function [x,y] = visualize(self, q, ax)
+       %% VISUALIZE: Creates a visualization of the hopper at a specific configuration 
+        
+        
+       if nargin == 2 && nargout == 0
+           figure();
+           ax = gca;
+       end
+       %% Do kinematics to get the joint positions
+       [x,y] = self.positions(q);
+       
+       %% Get linkage drawings for each of the links
+       % Base linkage (a ball)
+       [x_base, y_base] = self.drawLinkage(x(1), y(1), 0, self.base_radius, 0);
+       % Link 1 linkage
+       [x_1, y_1] = self.drawLinkage(x(1), y(1), self.lengths(1), self.link_radius, 3*pi/2+ q(3));
+       % Link 2 linkage
+       [x_2, y_2] = self.drawLinkage(x(2), y(2), self.lengths(2), self.link_radius, 3*pi/2 + q(3) + q(4));
+       % Link 3 linkage
+       [x_3, y_3] = self.drawLinkage(x(5), y(5), self.lengths(3), self.link_radius, 3*pi/2 + q(3) + q(4) + q(5));
+       
+       %% Draw all the linkages
+       if nargout == 0
+           hold(ax, 'on');
+           c = lines(4);
+           patch(ax, x_1, y_1, c(2,:));
+           patch(ax, x_2, y_2, c(3,:));
+           patch(ax, x_3, y_3, c(4,:));
+           % Draw the base linkage last.
+           patch(ax, x_base, y_base, c(1,:));
+           axis equal;
+           yl = ylim;
+           % Draw the terrain
+           [xterrain, yterrain] = self.terrain.draw(xlim, 100);
+           xterrain = [xterrain(:); xterrain(end); xterrain(1); xterrain(1)];
+           yterrain = [yterrain(:); yl(1); yl(1); yterrain(1)];
+           patch(ax, xterrain, yterrain, [0.4,0.4,0.4]);
+       else
+           x = [x_1(:), x_2(:), x_3(:), x_base(:)];
+           y = [y_1(:), y_2(:), y_3(:), y_base(:)];
+       end
+    end
     function q = inverseKinematics(obj, xb, xf, phi)
         %% INVERSE KINEMATICS: Calculates configuration variables from cartesian positions
         %

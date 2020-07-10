@@ -96,9 +96,9 @@ end
 %% Animate the trajectory
 q = x(1:5,:);
 if nargin == 3
-    utilities.trajectoryAnimator(plant, q, [], [savename,'.avi']);
+    animationUtilities.visualizeTrajectory(plant, q, [savename,'.avi']);
 else
-    utilities.trajectoryAnimator(plant, q);
+    animationUtilities.visualizeTrajectory(plant, q);
 end
 
 end
