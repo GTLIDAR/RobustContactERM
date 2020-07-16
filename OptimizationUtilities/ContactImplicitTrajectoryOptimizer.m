@@ -562,22 +562,21 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            fq = q1 - q0 - h * v0;
            dfq = [-v0,-eye(nQ),-h*eye(nV),eye(nQ), zeros(nQ, nV + nU + nL)];  
            % Calculate the forward dynamics defects (velocity equation)
-           fv = H*(v1 - v0) - h*(B*u - C + J'*lambda);
+           fv = H*(v1 - v0) - h*(B*u - C) - J'*lambda;
            % Calculate the derivative
            dHv = squeeze(sum(dH .* (v1 - v0)', 2));
            dBu = squeeze(sum(dB .* u', 2));
            dJl = squeeze(sum(dJ .* lambda', 2));
-           dfv = [-(B*u - C + J'*lambda), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -h*dJl, H, -h*B, -h*J'];
+           dfv = [-(B*u - C), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -dJl, H, -h*B, -J'];
            % Add joint limits
            if obj.nJl > 0
                Jl = [eye(nQ); -eye(nQ)];
                b = [-obj.plant.joint_limit_min; obj.plant.joint_limit_max];
                Jl(isinf(b),:) = [];
                % Add to the dynamics
-               fv = fv - h*Jl'*jlambda;
+               fv = fv - Jl'*jlambda;
                % Add to the gradients
-               dfv(:,1) = dfv(:,1) - Jl'*jlambda;
-               dfv = [dfv, -h*Jl'];
+               dfv = [dfv, -Jl'];
                dfq = [dfq, zeros(size(Jl'))];
            end
            % Combine the defects and the derivatives
@@ -645,26 +644,22 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             fq = q1 - q0 - h * v1;
             dfq = [-v1,-eye(nQ),zeros(nQ,nV),eye(nQ),-h*eye(nV),zeros(nQ,nU + nL)];
             % Calculate the forward dynamics defects (velocity equation)
-            fv = H*(v1 - v0) - h*(B*u - C + J'*lambda);
-%            fv = H*(v1 - v0) - h*(B*u - C) - J'*lambda;
+            fv = H*(v1 - v0) - h*(B*u - C) - J'*lambda;
             % Calculate the derivative
             dHv = squeeze(sum(dH .* (v1 - v0)', 2));
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
-            dfv = [-(B*u - C + J'*lambda), zeros(nV, nQ), -H, dHv - h*(dBu - dC(:,1:nQ) + dJl), H + h*dC(:,nQ+1:nQ+nV), -h*B, -h*J'];
- %            dfv = [-B*u + C, zeros(nV, nQ), -H, dHv - h*(dBu - dC(:,1:nQ)) - dJl, H + h*dC(:,nQ+1:nQ+nV), -h*B, -J'];
+            dfv = [-B*u + C, zeros(nV, nQ), -H, dHv - h*(dBu - dC(:,1:nQ)) - dJl, H + h*dC(:,nQ+1:nQ+nV), -h*B, -J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
                 b = [-obj.plant.joint_limit_min; obj.plant.joint_limit_max];
                 Jl(isinf(b),:) = [];
                 % Add to the dynamics
-                fv = fv - h*Jl'*jlambda;
-%                 fv = fv - Jl'*jlambda;
+                fv = fv - Jl'*jlambda;
                 % Add to the gradients
                 dfv(:,1) = dfv(:,1) - Jl'*jlambda;
-                dfv = [dfv, -h*Jl'];
-%                 dfv = [dfv, -Jl'];
+                dfv = [dfv, -Jl'];
                 dfq = [dfq, zeros(size(Jl'))];
             end
             % Combine the defects and the derivatives
@@ -735,23 +730,22 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             fq = q1 - q0 - h * 0.5 * (v0+v1);
             dfq = [-0.5*(v0+v1),-eye(nQ),-h*0.5*eye(nV),eye(nQ),-h*0.5*eye(nV) zeros(nQ, 2*nU + nL)];
             % Calculate the forward dynamics defects (velocity equation)
-            fv = H*(v1 - v0) - h*(B*u - C + J'*lambda);
+            fv = H*(v1 - v0) - h*(B*u - C) - J'*lambda;
             % Calculate the derivative
             dHv = squeeze(sum(dH .* (v1 - v0)', 2));
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
-            dfv = [-(B*u - C + J'*lambda), 0.5*(dHv - h*(dBu - dC(:,1:nQ))), -H + h*0.5*dC(:,nQ+1:nQ+nV),...
-                0.5*(dHv - h*(dBu - dC(:,1:nQ))) - h*dJl, H + h*0.5*dC(:,nQ+1:nQ+nV), -h*0.5*B,-h*0.5*B, -h*J'];
+            dfv = [-(B*u - C), 0.5*(dHv - h*(dBu - dC(:,1:nQ))), -H + h*0.5*dC(:,nQ+1:nQ+nV),...
+                0.5*(dHv - h*(dBu - dC(:,1:nQ))) - dJl, H + h*0.5*dC(:,nQ+1:nQ+nV), -h*0.5*B,-h*0.5*B, -J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
                 b = [-obj.plant.joint_limit_min; obj.plant.joint_limit_max];
                 Jl(isinf(b),:) = [];
                 % Add to the dynamics
-                fv = fv - h*Jl'*jlambda;
+                fv = fv - Jl'*jlambda;
                 % Add to the gradients
-                dfv(:,1) = dfv(:,1) - Jl'*jlambda;
-                dfv = [dfv, -h*Jl'];
+                dfv = [dfv, -Jl'];
                 dfq = [dfq, zeros(size(Jl'))];
             end
             % Combine the defects and the derivatives
@@ -818,22 +812,21 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             fq = q1 - q0 - h * v1;
             dfq = [-v0,-eye(nQ),zeros(nQ,nV) ,eye(nQ), -h*eye(nV), zeros(nQ, nU + nL)];
             % Calculate the forward dynamics defects (velocity equation)
-            fv = H*(v1 - v0) - h*(B*u - C + J'*lambda);
+            fv = H*(v1 - v0) - h*(B*u - C) - J'*lambda;
             % Calculate the derivative
             dHv = squeeze(sum(dH .* (v1 - v0)', 2));
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
-            dfv = [-(B*u - C + J'*lambda), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -h*dJl, H, -h*B, -h*J'];
+            dfv = [-(B*u - C), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -dJl, H, -h*B, -J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
                 b = [-obj.plant.joint_limit_min; obj.plant.joint_limit_max];
                 Jl(isinf(b),:) = [];
                 % Add to the dynamics
-                fv = fv - h*Jl'*jlambda;
+                fv = fv - Jl'*jlambda;
                 % Add to the gradients
-                dfv(:,1) =dfv(:,1) - Jl'*jlambda;
-                dfv = [dfv, -h*Jl'];
+                dfv = [dfv, -Jl'];
                 dfq = [dfq, zeros(size(Jl'))];
             end
             % Combine the defects and the derivatives
@@ -1135,18 +1128,6 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                % Add to the associated labeled constraint
                cstrName{n} = obj.nlcon{n}.name{1};
             end
-%             for n = 1:length(obj.bbcon)
-%                 % Get the arguments to the bounding box constraints
-%                 k = length(obj.nlcon) + n;
-%                 inds = obj.bbcon_xind{n};
-%                 args = z(inds);
-%                 % Get the value of the constraints
-%                 val{k} = obj.bbcon{n}.A * args;
-%                 viol = max(obj.bbcon{n}.lb - val{k}, val{k} - obj.bbcon{n}.ub);
-%                 viol(isinf(viol)) = 0;
-%                 viols(n) = norm(viol);
-%                 cstrName{k} = obj.bbcon{n}.name{1};
-%             end
             % Sum the common constraints
             [uniqueNames, ~, id] = unique(cstrName);
             cstrVal = struct();
