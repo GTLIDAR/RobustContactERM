@@ -129,9 +129,10 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 case RobustContactImplicitTrajectoryOptimizer.NO_UNCERTAINTY
                     % Add deterministic costs for friction distance, and
                     % sliding
-                    obj = obj.addFrictionConstraint();
-                    obj = obj.addSlidingConstraint();
+%                     obj = obj.addFrictionConstraint();
+%                     obj = obj.addSlidingConstraint();
                     obj = obj.addDistanceConstraint();
+                    obj = obj.addStaticFrictionConstraint();
                   
                 case RobustContactImplicitTrajectoryOptimizer.FRICTION_UNCERTAINTY
                     % Add ERM cost for friction, NCC for distance and
@@ -544,6 +545,35 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             f = obj.options.contactCostMultiplier * sum(f, 1);
             df = obj.options.contactCostMultiplier * sum(df, 1);
         end
+        %% ---------------- STATIC FRICTION (TEST) ----------%%
+        function [f, df] = staticFrictionConstraint(obj, x, lambda_N, lambda_T)
+            %% Enforce friction as a static friction condition
+            
+            nQ = obj.plant.getNumPositions();
+            [~, ~, ~, ~, ~, ~, ~, mu, ~, Jt, ~, dJt] = obj.plant.contactConstraints(x(1:nQ));
+            % Organize the derivative
+            for n = 1:length(dJt)
+                dJt{n} = reshape(dJt{n}', [nQ, nQ, obj.numContacts]);
+                dJt{n} = permute(dJt{n}, [3 1 2]);
+            end
+            % Tangential velocity
+            I = eye(numel(lambda_T));
+            f = zeros(numel(lambda_T), 1);
+            df = zeros(numel(lambda_T), numel(x)+numel(lambda_N) + numel(lambda_T));
+            for k = 1:obj.numFriction
+                v = Jt{k}*x(nQ+1:end);
+                % Smooth sign approximation
+                sgn = 1./(1+exp(-10.*(v - 0.5)));
+                % Static Friction approximation
+                f(k:obj.numFriction:end) = lambda_T(k:obj.numFriction:end) - sgn.*mu.*lambda_N;
+                % Constraint derivative
+                dv_q = squeeze(sum(dJt{n} .* x(nQ+1:end)', 2));
+                dv_dq = Jt{n};
+                dsgn = 10.*exp(-10.*(v - 0.5)).*sgn.^2;
+                % Derivative
+                df(k:obj.numFriction:end,:) = [-dsgn.*dv_q.*mu.*lambda_N, -dsgn.*dv_dq.*mu.*lambda_N, diag(-sgn.*mu),I(k:obj.numFriction:end, :)];
+            end
+        end
     end
     
     methods (Access = protected)
@@ -710,6 +740,16 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             end
             if distance.n_slack > 0
                 obj.slack_inds = [obj.slack_inds; slack_idx];
+            end
+        end
+        function obj = addStaticFrictionConstraint(obj)
+            nX = obj.plant.getNumStates();
+            nL = length(obj.force_inds);
+            nT = length(obj.tangent_inds);
+            friction = FunctionHandleConstraint(zeros(nT,1), zeros(nT,1),nX + nL, @obj.staticFrictionConstraint);
+            friction = friction.setName('StaticFriction');
+            for n = 1:obj.N-1
+               obj = obj.addConstraint(friction, {obj.x_inds(:,n+1), obj.lambda_inds(obj.normal_inds, n), obj.lambda_inds(obj.tangent_inds, n)}); 
             end
         end
     end
