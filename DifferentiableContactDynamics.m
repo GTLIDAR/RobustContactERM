@@ -381,48 +381,102 @@ classdef DifferentiableContactDynamics
             iA = 1; % Body A is the manipulator (the only body in the problem)
             iB = 0; % Body B is the terrain
                  
-            % Friction is a property of the terrian
-            mu = obj.terrain.friction_coeff;
-            
-            % Get the nearest point from the terrain
-            xA = obj.kinematics(q);
-            xB = obj.terrain.nearest(xA);
-            
-            % Calculate the local coordinates of the terrain
-            [Nw, Tw] = obj.terrain.basis(xB);
-            % Expand Nw and Tw to select the appropriate contact point
-            Nw = mat2cell(Nw, size(Nw,1),ones(1,size(Nw,2)));
-            Tw = mat2cell(Tw, size(Tw,1), ones(1,size(Tw,2)));
-            Nw = blkdiag(Nw{:});
-            Tw = blkdiag(Tw{:});
-            Dw = {Tw};
-            % Calculate the signed distance function
-            phi = Nw' * (xA(:) - xB(:));
-            % Calculate N and D from the jacobian
+            % Get the jacobian
             [J, dJ] = obj.jacobian(q);
-            N = J' * Nw;
-            D = cell(2,1);
-            D{1} = J' * Tw;
-            D{2} = -D{1};
-            % Calculate dN and dD by contraction with dJacobian
-            dN = zeros(numel(N), numel(q));
-            dD = cell(2,1);
-            dD{1} = zeros(numel(D{1}),numel(q));
-            dD{2} = dD{1};
-            for n = 1:numel(q)
-                tempN = dJ(:,:,n)'*Nw;
-                dN(:,n) = tempN(:);
-                tempD = dJ(:,:,n)'*Tw;
-                dD{1}(:,n) = tempD(:);
-                dD{2}(:,n) = -tempD(:);
-            end
-            % Format for output
-            N = N';
-            D{1} = D{1}';
-            D{2} = D{2}';
             
+            % Number of contact points
+            xA = obj.kinematics(q);
+            [dim, nPoints] = size(xA);
+            % Initialize loop outputs
+            xB = zeros(size(xA));
+            phi = zeros(nPoints,1);
+            Nw = zeros(size(xA));
+            Dw = cell(1);
+            Dw{1} = zeros(size(xA));
+            
+            N = zeros(nPoints,numel(q));
+            D = cell(2,1);
+            dN = zeros(nPoints*numel(q), numel(q));
+            dJN = zeros(nPoints, numel(q), numel(q));
+            dJD = zeros(nPoints, numel(q), numel(q));
+            dD = cell(2,1);
+            dD{1} = zeros(nPoints*numel(q), numel(q));
+            dD{2} = zeros(nPoints*numel(q), numel(q));
+
+            for n = 1:nPoints
+               % Get the nearest point on the terrain
+               [xB(:,n), dXb] = obj.terrain.nearest(xA(:,n));
+               % Terain basis vectors
+               [Nw(:,n), Dw{1}(:,n), dNw, dTw] = obj.terrain.basis(xB(:,n));
+               % Normal Distance
+               phi(n) = Nw(:,n)'*(xA(:,n) - xB(:,n));
+               % Jacobian of the current point
+               J_c = J((n-1)*dim+1:n*dim,:);
+               dJ_c = dJ((n-1)*dim + 1 : n*dim, :, :);
+               % Normal and Tangent Vectors in Generalized Coordinates
+               N(n,:) = Nw(:,n)'*J_c;
+               D{1}(n,:) = Dw{1}(:,n)'*J_c;
+               D{2}(n,:) = -D{1}(n,:);              
+               % Derivatives of Normal and Tangent Vectors
+               for k = 1:numel(q)
+                  dJN(n,:,k) = (dNw * dXb * J_c(:,k))'*J_c + Nw(:,n)'*dJ_c(:,:,k); 
+                  dJD(n,:,k) = (dTw * dXb * J_c(:,k))'*J_c + Dw{1}(:,n)'*dJ_c(:,:,k);
+               end
+            end
+            % Reorganize the derivatives to match expected output
+            for k = 1:numel(q)
+               dN_ = dJN(:,:,k)';
+               dN(:,k) = dN_(:);
+               dT_ = dJD(:,:,k)';
+               dD{1}(:,k) = dT_(:);
+            end
+            
+            dD{2} = -dD{1};
+            % Get friction
+            mu = obj.terrain.friction_coeff;
+            mu = mu * ones(nPoints,1);
+%             % Friction is a property of the terrian
+%             mu = obj.terrain.friction_coeff;
+%             
+%             % Get the nearest point from the terrain
+%             xA = obj.kinematics(q);
+%             xB = obj.terrain.nearest(xA);
+%             
+%             % Calculate the local coordinates of the terrain
+%             [Nw, Tw] = obj.terrain.basis(xB);
+%             % Expand Nw and Tw to select the appropriate contact point
+%             Nw = mat2cell(Nw, size(Nw,1),ones(1,size(Nw,2)));
+%             Tw = mat2cell(Tw, size(Tw,1), ones(1,size(Tw,2)));
+%             Nw = blkdiag(Nw{:});
+%             Tw = blkdiag(Tw{:});
+%             Dw = {Tw};
+%             % Calculate the signed distance function
+%             phi = Nw' * (xA(:) - xB(:));
+%             % Calculate N and D from the jacobian
+%             [J, dJ] = obj.jacobian(q);
+%             N = J' * Nw;
+%             D = cell(2,1);
+%             D{1} = J' * Tw;
+%             D{2} = -D{1};
+%             % Calculate dN and dD by contraction with dJacobian
+%             dN = zeros(numel(N), numel(q));
+%             dD = cell(2,1);
+%             dD{1} = zeros(numel(D{1}),numel(q));
+%             dD{2} = dD{1};
+%             for n = 1:numel(q)
+%                 tempN = dJ(:,:,n)'*Nw;
+%                 dN(:,n) = tempN(:);
+%                 tempD = dJ(:,:,n)'*Tw;
+%                 dD{1}(:,n) = tempD(:);
+%                 dD{2}(:,n) = -tempD(:);
+%             end
+%             % Format for output
+%             N = N';
+%             D{1} = D{1}';
+%             D{2} = D{2}';
+%             
             % Extend friction coefficient so there is 1 for every contact
-            mu = mu * ones(length(phi),1);
+%             mu = mu * ones(length(phi),1);
         end
         function obj = setupLCPCache(obj, t)
            % Set-up a cache for storing LCP results

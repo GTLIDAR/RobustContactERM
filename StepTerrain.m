@@ -13,7 +13,7 @@ classdef StepTerrain < Terrain2D
     methods
         function obj = StepTerrain()
         end
-        function x = nearest(obj, xA)
+        function [x, dx] = nearest(obj, xA)
             % Returns the nearest point on the terrain
             
             x = zeros(size(xA));
@@ -21,15 +21,18 @@ classdef StepTerrain < Terrain2D
             x(2,:) = obj.terrain_height;
             x(2,xA(1,:) > obj.step_location) = obj.step_height;
             
-        end
-        function [N,T] = basis(obj, xB)
+            dx = zeros(numel(x),numel(xA));
+            dx(1,1) = 1;
             
-           nPoints = size(xB,2); 
+        end
+        function [N,T, dN, dT] = basis(obj, xB)
+            
            N = [0;1];
            T = [1;0];
            
-           N = repmat(N, 1, nPoints);
-           T = repmat(T, 1, nPoints);
+           dN = zeros(2,2);
+           dT = zeros(2,2);
+           
         end
         function [x, y] = draw(obj, xlim, N)
            % Draws the terrain within the limits

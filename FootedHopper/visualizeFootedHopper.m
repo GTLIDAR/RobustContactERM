@@ -40,10 +40,11 @@ fig = figure('name','Joints');
 if isfield(soln, 'jltraj')
     NFigs = 4;
     subplot(NFigs,1,4)
-    N = size(soln.jltraj,1);
+    jL = soln.jltraj.eval(t);
+    N = size(jL,1);
     P = [eye(N/2), -eye(N/2)];
     % Resolve the joint limit torques
-    jL = P*soln.jltraj;
+    jL = P*jL;
     % Plot the joint limit torques
     plot(t,jL(1,:),t,jL(2,:),t,jL(3,:),'LineWidth',1.5);
     ylabel('Limit Torques');

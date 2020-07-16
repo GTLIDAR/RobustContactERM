@@ -637,6 +637,9 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             sliding.constraints{1} = sliding.constraints{1}.setName('FrictionForceNonneg');
             sliding.constraints{2} = sliding.constraints{2}.setName('TangentVelocityNonneg');
             sliding.constraints{3} = sliding.constraints{3}.setName('TangentVelocityCompl');
+            if sliding.n_slack > 0
+               slack_idx = zeros(sliding.n_slack, obj.N-1); 
+            end
             % Add the constraint at every knot point
             for i = 1:obj.N-1
                 % Order the indices such that the argument is 
@@ -646,7 +649,13 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 else
                     slidingIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds, i); obj.lambda_inds(obj.gamma_inds, i); obj.lambda_inds(obj.tangent_inds, i)];
                 end
+                if sliding.n_slack > 0
+                    slack_idx(:,i) = (obj.num_vars + 1: obj.num_vars + sliding.n_slack)';
+                end
                 obj = obj.addConstraint(sliding, slidingIdx);
+            end
+            if sliding.n_slack > 0
+                obj.slack_inds = [obj.slack_inds; slack_idx];
             end
         end
         function obj = addFrictionConstraint(obj)
@@ -656,7 +665,10 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
              friction.constraints{1} = friction.constraints{1}.setName('SlidingNonneg');
              friction.constraints{2} = friction.constraints{2}.setName('FrictionConeNonneg');
              friction.constraints{3} = friction.constraints{3}.setName('FrictionConeCompl');
-             % Add the constraint to every knot point                   
+             % Add the constraint to every knot point
+             if friction.n_slack > 0
+                slack_idx = zeros(friction.n_slack, obj.N-1); 
+             end
              for i = 1:obj.N-1
                  % Reshape all the lambda_inds so the forces are grouped together as [normal, tangential, slack]
                  if obj.options.nlcc_mode == 5
@@ -664,7 +676,13 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                  else
                      frictionIdx =  [obj.lambda_inds(obj.normal_inds,i); obj.lambda_inds(obj.tangent_inds,i); obj.lambda_inds(obj.gamma_inds,i)];
                  end
+                 if friction.n_slack > 0
+                    slack_idx(:,i) = (obj.num_vars + 1 : obj.num_vars + friction.n_slack)'; 
+                 end
                  obj = obj.addConstraint(friction, frictionIdx);
+             end
+             if friction.n_slack > 0
+                 obj.slack_inds = [obj.slack_inds; slack_idx];
              end
         end
         function obj = addDistanceConstraint(obj)
@@ -674,6 +692,9 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             distance.constraints{1} = distance.constraints{1}.setName('NormalForceNonNeg');
             distance.constraints{2} = distance.constraints{2}.setName('NormalDistanceNonNeg');
             distance.constraints{3} = distance.constraints{3}.setName('NormalDistanceCompl');
+            if distance.n_slack > 0
+               slack_idx = zeros(distance.n_slack, obj.N-1); 
+            end
             % Add the constraint at every knot point
             for i = 1:obj.N-1
                 % For distance, we only need [x, lambdaN];
@@ -682,7 +703,13 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 else
                     distanceIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i)];
                 end
+                if distance.n_slack > 0
+                   slack_idx(:,i) = (obj.num_vars + 1:obj.num_vars + distance.n_slack)'; 
+                end
                 obj = obj.addConstraint(distance, distanceIdx);
+            end
+            if distance.n_slack > 0
+                obj.slack_inds = [obj.slack_inds; slack_idx];
             end
         end
     end

@@ -16,13 +16,15 @@ classdef FlatTerrain < Terrain2D
         function obj = FlatTerrain()
         end
         
-        function x = nearest(obj, xA)
+        function [x, dx] = nearest(obj, xA)
             % NEAREST: Returns the nearest point on the terrain
             % 
             %   For FLAT TERRAIN, the nearest point to (xA, yA) is (xA, 0)
             x = zeros(size(xA));
             x(1,:) = xA(1,:);
             x(2,:) = obj.terrain_height;
+            dx = zeros(numel(x), numel(xA));
+            dx(1,1) = 1;
         end
         function [N, T] = basis(obj, xB)
            % BASIS: Returns the local coordinate basis for the terrain

@@ -9,8 +9,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         tangent_inds;   % Row indices for the tangential forces
         gamma_inds;     % Row indices for the sliding velocity slack variables.
         
-        slack_inds;     % Indices for the NCC Slack variables 
-        relax_inds = [];% Indices for the NCC relaxation variables         
+        slack_inds = [];% Indices for the NCC Slack variables    
                 
         nJl = 0;        % Number of joint limits
         jl_inds =[];    % Joint limit force indices
@@ -115,7 +114,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            % Set the relaxation variables
            if obj.options.nlcc_mode == 5
                [obj, inds] = obj.addDecisionVariable(N-1);
-               obj.relax_inds = inds;
+               obj.slack_inds = inds;
            end
            
            % Add joint limit forces
@@ -127,16 +126,30 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            
            
         end
-        function [xtraj, utraj, ftraj,z,F, info, infeasible] = solveTraj(obj, t_init, traj_init)
+        function [xtraj, utraj, ltraj,jltraj, slacks, z,F, info, infeasible] = solveTraj(obj, t_init, traj_init)
             % Solve the problem using
             [xtraj, utraj, z, F, info, infeasible] = solveTraj@DirectTrajectoryOptimization(obj, t_init, traj_init);
             
             % Pull the contact forces from the decision variable list
             if obj.numContacts > 0
                 t = [0; cumsum(z(obj.h_inds))];
-                ftraj = PPTrajectory(foh(t, reshape(z(obj.lambda_inds),[],obj.N)));
+                ltraj = PPTrajectory(foh(t, reshape(z(obj.lambda_inds),[],obj.N)));
             else
-                ftraj = [];
+                ltraj = [];
+            end
+            % Pull the joint limit forces from the decision variable list
+            if obj.nJl > 0
+                t = [0;cumsum(z(obj.h_inds))];
+                    jltraj = PPTrajectory(foh(t, reshape(z(obj.jl_inds), [], obj.N)));
+            else
+               jltraj = []; 
+            end
+            % Pull all slack and relaxation variables from the decision
+            % variable list
+            if ~isempty(obj.slack_inds)
+                slacks = z(obj.slack_inds);
+            else
+                slacks = [];
             end
         end
         function z0 = getInitialVars(obj, t_init, traj_init)
@@ -154,9 +167,15 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            end     
            % Add joint limit variables
            if obj.nJl > 0
-              if isfield(traj_init, 'jl')
-                    z0(obj.jl_inds) = traj_init.jl.eval(t_init);
+              if isfield(traj_init, 'jltraj')
+                    z0(obj.jl_inds) = traj_init.jltraj.eval(t_init);
               end
+           end
+           % Add in any slack variables
+           if ~isempty(obj.slack_inds)
+               if isfield(traj_init, 'slacks')
+                  z0(obj.slack_inds) = traj_init.slacks; 
+               end
            end
         end
         function obj = addDynamicConstraints(obj)
@@ -249,18 +268,27 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             nlc_cstr.constraints{1} = nlc_cstr.constraints{1}.setName('ContactForceNonneg');
             nlc_cstr.constraints{2} = nlc_cstr.constraints{2}.setName('ContactFuncNonneg');
             nlc_cstr.constraints{3} = nlc_cstr.constraints{3}.setName('ContactCompl');
+            if nlc_cstr.n_slacks >0
+               obj.slack_inds = zeros(nlc_cstr.n_slacks, N-1); 
+            end
             if obj.options.nlcc_mode == 5
                 % Relaxed NC Constraints
                 for i = 1:obj.N - 1
-                    obj = obj.addConstraint(nlc_cstr, [obj.x_inds(:,i+1); obj.lambda_inds(:,i); obj.relax_inds(i)]);
+                    if nlc_cstr.n_slacks > 0
+                        obj.slack_inds(:,n) = (obj.num_vars + 1 : obj.num_vars + nlc_cstr.n_slacks)';
+                    end
+                    obj = obj.addConstraint(nlc_cstr, [obj.x_inds(:,i+1); obj.lambda_inds(:,i); obj.slack_inds(i)]);
                 end
                 % Add the cost for the relaxation
                 cost = FunctionHandleObjective(obj.N-1, @(x) obj.relaxed_nc_cost(x));
                 cost = cost.setName('RelaxedNLCCost');
-                obj = obj.addCost(cost, obj.relax_inds);
+                obj = obj.addCost(cost, obj.slack_inds);
             else
                 % Strict NC Constraints
                 for i = 1:obj.N - 1
+                    if nlc_cstr.n_slacks > 0
+                        obj.slack_inds(:,n) = (obj.num_vars + 1 : obj.num_vars + nlc_cstr.n_slacks)';
+                    end
                     obj = obj.addConstraint(nlc_cstr, [obj.x_inds(:,i+1); obj.lambda_inds(:,i)]);
                 end
             end
@@ -618,13 +646,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dfq = [-v1,-eye(nQ),zeros(nQ,nV),eye(nQ),-h*eye(nV),zeros(nQ,nU + nL)];
             % Calculate the forward dynamics defects (velocity equation)
             fv = H*(v1 - v0) - h*(B*u - C + J'*lambda);
-%             fv = H*(v1 - v0) - h*(B*u - C) - J'*lambda;
+%            fv = H*(v1 - v0) - h*(B*u - C) - J'*lambda;
             % Calculate the derivative
             dHv = squeeze(sum(dH .* (v1 - v0)', 2));
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
             dfv = [-(B*u - C + J'*lambda), zeros(nV, nQ), -H, dHv - h*(dBu - dC(:,1:nQ) + dJl), H + h*dC(:,nQ+1:nQ+nV), -h*B, -h*J'];
-%             dfv = [-B*u + C, zeros(nV, nQ), -H, dHv - h*(dBu - dC(:,1:nQ) + dJl), H + h*dC(:,nQ+1:nQ+nV), -h*B, -J'];
+ %            dfv = [-B*u + C, zeros(nV, nQ), -H, dHv - h*(dBu - dC(:,1:nQ)) - dJl, H + h*dC(:,nQ+1:nQ+nV), -h*B, -J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
@@ -1013,39 +1041,41 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             fprintf([formatStr, '\n'], iteration, args{:});
             
             
-%             % Make a figure
-%             if iteration  == 1
-%                 % Plot the figures
-%                 costlines = figure();
-%                 for n = 1:length(costNames)
-%                    subplot(length(costNames),1, n);
-%                    plot(iteration, sum(cost.(costNames{n})),'k');
-%                    ylabel(costNames{n});
-%                 end
-%                 xlabel('Iterations');
-%                 
-%                 % Plot the constraints
-%                 cstrlines = figure();
-%                 for n = 1:length(cstrNames)
-%                     subplot(length(cstrNames), 1, n)
-%                     plot(iteration, sum(cstr.(cstrNames{n})), 'k');
-%                     ylabel(cstrNames{n})
-%                 end
-%                 xlabel('Iterations');
-%             else
-%                 figure(costlines)
-%                 for n = 1:length(costNames)
-%                    subplot(length(costNames), 1, n)
-%                    line = get(gca,'Children');
-%                    set(line, 'XData', [get(line, 'XData'), iteration], 'YData', [get(line, 'YData'), sum(cost.(costNames{n}))]); 
-%                 end
-%                 figure(cstrlines)
-%                 for n = 1:length(cstrNames)
-%                    subplot(length(cstrNames), 1, n)
-%                    line = get(gca,'Children');
-%                    set(line,'XData', [get(line,'XData'), iteration], 'YData', [get(line,'YData'), sum(cstr.(cstrNames{n}))]);
-%                 end
-%             end
+            % Make a figure
+            if iteration  == 1
+                % Plot the figures
+                costlines = figure();
+                for n = 1:length(costNames)
+                    subplot(length(costNames),1, n);
+                    plot(iteration, sum(cost.(costNames{n})),'k');
+                    ylabel(costNames{n});
+                end
+                xlabel('Iterations');
+                
+                % Plot the constraints
+                cstrlines = figure();
+                for n = 1:length(cstrNames)
+                    subplot(length(cstrNames), 1, n)
+                    plot(iteration, sum(cstr.(cstrNames{n})), 'k');
+                    ylabel(cstrNames{n})
+                end
+                xlabel('Iterations');
+            else
+                figure(costlines)
+                for n = 1:length(costNames)
+                    subplot(length(costNames), 1, n)
+                    line = get(gca,'Children');
+                    set(line, 'XData', [get(line, 'XData'), iteration], 'YData', [get(line, 'YData'), sum(cost.(costNames{n}))]);
+                end
+                drawnow limitrate;
+                figure(cstrlines)
+                for n = 1:length(cstrNames)
+                    subplot(length(cstrNames), 1, n)
+                    line = get(gca,'Children');
+                    set(line,'XData', [get(line,'XData'), iteration], 'YData', [get(line,'YData'), sum(cstr.(cstrNames{n}))]);
+                end
+                drawnow limitrate;
+            end
             % Increment iteration count
             iteration = iteration + 1;
             

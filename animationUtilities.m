@@ -221,7 +221,7 @@ classdef animationUtilities
         function visualizeTrajectory(plant,q,savename)
             %% VisualizeTrajectory: Visualizes a single trajectory of a dynamical system
             %
-            
+            pause(1);
             %% Get the data
             % Gather the frames together and determine the framesize
             N = size(q,2);
@@ -273,19 +273,20 @@ classdef animationUtilities
             end
             set(ax, 'XLimMode','manual','YLimMode','manual','xlim',xlims,'ylim',ylims);
             % Get the frame
-            drawnow;
+            drawnow limitrate;
             if nargin > 2 && ~isempty(savename)
+                pause(0.1);
                 writer.writeVideo(getframe(ax));
             end
-            
             % Draw all the frames and create a video
             for n = 2:N
                 for k = 1:NPatch
                     set(patches{k}, 'xdata', xdata{n}(:,k), 'ydata', ydata{n}(:,k));
                 end
                 set(ax, 'XLimMode','manual','YLimMode','manual','xlim',xlims,'ylim',ylims);
-                drawnow;
+                drawnow limitrate;
                 if nargin > 2 && ~isempty(savename)
+                    pause(0.1);
                     writer.writeVideo(getframe(ax));
                 end
             end

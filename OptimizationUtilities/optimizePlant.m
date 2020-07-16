@@ -123,7 +123,7 @@ traj_init = guess.traj;
 fprintf('Running Trajectory Optimization\n');
 pause(0.1);
 tic;
-[soln.xtraj, soln.utraj, soln.ltraj, soln.z, soln.F, soln.info, soln.infeasible] = prob.solveTraj(t_init, traj_init);
+[soln.xtraj, soln.utraj, soln.ltraj, soln.jltraj, soln.slacks, soln.z,  soln.F, soln.info, soln.infeasible] = prob.solveTraj(t_init, traj_init);
 soln.elapsed = toc;
 fprintf('Elapsed time is %f seconds\n',soln.elapsed);
 pause(0.1);
@@ -138,16 +138,6 @@ end
 % Get and store the time vector
 dt = soln.z(prob.h_inds);
 soln.t = cumsum([0;dt]);
-% Check for relaxation variables
-if optimOptions.options.nlcc_mode == 5
-   soln.relax = soln.z(prob.relax_inds); 
-   fprintf('Relaxed NC Constraint Maximum: %8.2e\n',max(soln.relax));
-end
-% Check for jointt limits
-if prob.nJl > 0
-    jl = soln.z(prob.jl_inds);
-    soln.jltraj = jl;
-end
 
 % Get the values of the costs, constraints, and constraint violations
 [soln.costs, soln.cstrViol, soln.cstrVal] = prob.calculateCostsAndConstraints(soln.z);
