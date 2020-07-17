@@ -644,12 +644,12 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             fq = q1 - q0 - h * v1;
             dfq = [-v1,-eye(nQ),zeros(nQ,nV),eye(nQ),-h*eye(nV),zeros(nQ,nU + nL)];
             % Calculate the forward dynamics defects (velocity equation)
-            fv = H*(v1 - v0) - h*(B*u - C) - J'*lambda;
+            fv = H*(v1 - v0) + h*(C - B*u) - J'*lambda;
             % Calculate the derivative
             dHv = squeeze(sum(dH .* (v1 - v0)', 2));
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
-            dfv = [-B*u + C, zeros(nV, nQ), -H, dHv - h*(dBu - dC(:,1:nQ)) - dJl, H + h*dC(:,nQ+1:nQ+nV), -h*B, -J'];
+            dfv = [C - B*u, zeros(nV, nQ), -H, dHv + h*(dC(:,1:nQ) - dBu) - dJl, H + h*dC(:,nQ+1:nQ+nV), -h*B, -J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
@@ -658,7 +658,6 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 % Add to the dynamics
                 fv = fv - Jl'*jlambda;
                 % Add to the gradients
-                dfv(:,1) = dfv(:,1) - Jl'*jlambda;
                 dfv = [dfv, -Jl'];
                 dfq = [dfq, zeros(size(Jl'))];
             end
