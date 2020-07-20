@@ -6,10 +6,10 @@ function  visualizeFootedHopper(plant, soln, savename)
 %   May 11, 2020
 
 % Force selector matrix
-S = [1 0 0 0 0 0 0 0;
-     0 1 -1 0 0 0 0 0;
-     0 0 0 0 1 0 0 0;
-     0 0 0 0 0 1 -1 0];
+S = [1 0  0 0 0 0 0 0  0 0 0 0;
+     0 1 -1 0 0 0 0 0  0 0 0 0;
+     0 0  0 0 0 0 1 0  0 0 0 0;
+     0 0  0 0 0 0 0 1 -1 0 0 0];
 % Get the trajectories
 t = soln.t;
 x = soln.xtraj.eval(t);

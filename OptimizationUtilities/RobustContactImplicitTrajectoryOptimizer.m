@@ -630,60 +630,73 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                obj = obj.addFrictionConstraint(); 
             end
         end
+        function [f, df] = tangentVelocityDefect(obj, x, gamma, nu)
+            
+            % Get the configuration and velocity
+            nQ = obj.plant.getNumPositions();
+            q = x(1:nQ, :);
+            dq = x(nQ+1:end, :);
+            % Get Jacobian and it's derivative
+            [~, ~, Jt, dJt] = obj.getContactJacobian(q);
+            % Slack selection matrix
+            E = zeros(obj.numContacts, obj.numContacts*obj.numFriction);
+            for n = 1:obj.numContacts
+                E(n, (n-1)*obj.numFriction+1:n*obj.numFriction) = 1;
+            end
+            % Constraint Evaluation
+            f = Jt*dq + E' * gamma - nu;
+            % Constraint Gradient
+            dJt_q = squeeze(sum(dJt .* q', 2));
+            df = [dJt_q, Jt, E', -eye(numel(nu))];
+        end
         function obj = addSlidingConstraint(obj)
             %% addSlidingConstraint: adds the complementarity constraint for sliding velocity to the problem
             % Create a Comlementarity Constraint for sliding
-            sliding = RelaxedNonlinearComplementarityConstraint(@obj.slidingVelocityConstraint, obj.plant.getNumStates()+2*obj.numContacts, obj.numContacts*obj.numFriction, obj.options.nlcc_mode, obj.options.compl_slack);
+            nT = numel(obj.tangent_inds);
+            numvars = obj.plant.getNumStates() + obj.numContacts*(1 + obj.numFriction);
+            tanVel = FunctionHandleConstraint(zeros(nT, 1), zeros(nT, 1), numvars, @obj.tangentVelocityDefect);
+            tanVel = tanVel.setName('SlidingVelocityConstriant');
+            M = eye(nT);
+            W = zeros(nT);
+            q = zeros(nT, 1);
+            sliding = LinearComplementarityConstraint_original(W,q,M, obj.options.lincc_mode, obj.options.lincc_slack);          
             sliding.constraints{1} = sliding.constraints{1}.setName('FrictionForceNonneg');
-            sliding.constraints{2} = sliding.constraints{2}.setName('TangentVelocityNonneg');
+            sliding.constraints{2} = sliding.constraints{2}.setName('VelocitySlackNonneg');
             sliding.constraints{3} = sliding.constraints{3}.setName('TangentVelocityCompl');
-            if sliding.n_slack > 0
-               slack_idx = zeros(sliding.n_slack, obj.N-1); 
-            end
+
             % Add the constraint at every knot point
             for i = 1:obj.N-1
-                % Order the indices such that the argument is 
-                %   [x, lambdaN, gamma, lambdaT]
-                if obj.options.nlcc_mode == 5
-                    slidingIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds, i); obj.lambda_inds(obj.gamma_inds, i); obj.lambda_inds(obj.tangent_inds, i); obj.relax_inds(i)];
-                else
-                    slidingIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds, i); obj.lambda_inds(obj.gamma_inds, i); obj.lambda_inds(obj.tangent_inds, i)];
-                end
-                if sliding.n_slack > 0
-                    slack_idx(:,i) = (obj.num_vars + 1: obj.num_vars + sliding.n_slack)';
-                end
+                % Add the sliding velocity constraint
+                tanVelIdx = {obj.x_inds(:,i+1); obj.lambda_inds(obj.gamma_inds,i); obj.lambda_inds(obj.nu_inds,i)};
+                obj = obj.addConstraint(tanVel, tanVelIdx);
+                % Add the linear complementarity constraints
+                slidingIdx = obj.lambda_inds([obj.tangent_inds, obj.nu_inds], i);
                 obj = obj.addConstraint(sliding, slidingIdx);
-            end
-            if sliding.n_slack > 0
-                obj.slack_inds = [obj.slack_inds; slack_idx];
             end
         end
         function obj = addFrictionConstraint(obj)
             %% addFrictionConstraint: adds the complementarity constraint for the friction cone to the optimization problem
             % Create a complementarity constraint for the friction cone
-             friction = RelaxedNonlinearComplementarityConstraint(@obj.frictionConeConstraint, obj.numContacts*(1+obj.numFriction), obj.numContacts, obj.options.nlcc_mode, obj.options.compl_slack);
-             friction.constraints{1} = friction.constraints{1}.setName('SlidingNonneg');
-             friction.constraints{2} = friction.constraints{2}.setName('FrictionConeNonneg');
-             friction.constraints{3} = friction.constraints{3}.setName('FrictionConeCompl');
-             % Add the constraint to every knot point
-             if friction.n_slack > 0
-                slack_idx = zeros(friction.n_slack, obj.N-1); 
-             end
-             for i = 1:obj.N-1
-                 % Reshape all the lambda_inds so the forces are grouped together as [normal, tangential, slack]
-                 if obj.options.nlcc_mode == 5
-                     frictionIdx =  [obj.lambda_inds(obj.normal_inds,i); obj.lambda_inds(obj.tangent_inds,i); obj.lambda_inds(obj.gamma_inds,i); obj.relax_inds(i)];
-                 else
-                     frictionIdx =  [obj.lambda_inds(obj.normal_inds,i); obj.lambda_inds(obj.tangent_inds,i); obj.lambda_inds(obj.gamma_inds,i)];
-                 end
-                 if friction.n_slack > 0
-                    slack_idx(:,i) = (obj.num_vars + 1 : obj.num_vars + friction.n_slack)'; 
-                 end
-                 obj = obj.addConstraint(friction, frictionIdx);
-             end
-             if friction.n_slack > 0
-                 obj.slack_inds = [obj.slack_inds; slack_idx];
-             end
+            [~, ~, ~, ~, ~, ~, ~, mu] = obj.plant.contactConstraints(zeros(obj.plant.getNumPositions(), 1), false, obj.options.active_collision_options);
+            
+            E = zeros(obj.numContacts, obj.numContacts*obj.numFriction);
+            for n = 1:obj.numContacts
+               E(n, (n-1)*obj.numFriction+1:n*obj.numFriction) = -1;  
+            end
+            
+            M = [diag(mu), E];
+            W = zeros(obj.numContacts);
+            q = zeros(obj.numContacts, 1);
+            
+            friction = LinearComplementarityConstraint_original(W,q,M, obj.options.lincc_mode, obj.options.lincc_slack);
+            friction.constraints{1} = friction.constraints{1}.setName('FrictionSlackNonneg');
+            friction.constraints{2} = friction.constraints{2}.setName('FrictionConeNonneg');
+            friction.constraints{3} = friction.constraints{3}.setName('FrictionConeCompl');
+            % Add the constraint at every knot point
+            for i = 1:obj.N-1
+                frictionInds = obj.lambda_inds([obj.gamma_inds, obj.normal_inds, obj.tangent_inds],i);
+                obj = obj.addConstraint(friction, frictionInds);
+            end
         end
         function obj = addDistanceConstraint(obj)
             %% addDistanceConstraint: adds the complementarity constraint for normal distance to the optimization problem 

@@ -8,15 +8,14 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         normal_inds;    % Row indices for the normal forces    
         tangent_inds;   % Row indices for the tangential forces
         gamma_inds;     % Row indices for the sliding velocity slack variables.
+        nu_inds;        % Row indices for the tangential force slack variables
         
         slack_inds = [];% Indices for the NCC Slack variables    
                 
         nJl = 0;        % Number of joint limits
         jl_inds =[];    % Joint limit force indices
 
-          
-        lincc_mode = 1; % Mode for linear complementarity constraints (Joint Limits)
-        lincc_slack = 0;% Slack variable for linear complementarity constraints (Joint Limits)    
+        
     end  
     properties (Constant)
         % INTEGRATION METHODS
@@ -70,6 +69,12 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             if ~isfield(options, 'relax_cost')
                options.relax_cost = 1; 
             end
+            if ~isfield(options, 'lincc_mode')
+                options.lincc_mode = 1;
+            end
+            if ~isfield(options, 'lincc_slack')
+               options.lincc_slack = 0; 
+            end
             % Construct the object
             obj = obj@DirectTrajectoryOptimization(plant, N, duration, options);    
         end     
@@ -87,8 +92,9 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            obj.numContacts = size(normal, 2);
            obj.numFriction = 2*length(tangential);
            
-           % Calculate total number of contact forces
-           nContactForces = obj.numContacts * (2 + obj.numFriction);
+           % Calculate total number of contact forces (plus slack
+           % variables)
+           nContactForces = 2* obj.numContacts * (1 + obj.numFriction);
             % Calculate the indices for getting the forces from the decision
            % variable list
            obj.lambda_inds = reshape(obj.num_vars + (1:N * nContactForces), nContactForces, N);
@@ -97,19 +103,24 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            obj = obj.addDecisionVariable(N * nContactForces);
                    
            % Set the index variables for the individual forces
-           skip = 2 + obj.numFriction;
+           skip = 2*(1 + obj.numFriction);
            % Normal force indices
            obj.normal_inds = 1:skip:nContactForces;
            % Sliding velocity slack indices
-           obj.gamma_inds = skip:skip:nContactForces;
+           obj.gamma_inds = (2 + obj.numFriction):skip:nContactForces;
+           % Friction force slack indices
+           a = (1:obj.numFriction)';
+           b = (2+obj.numFriction):skip:nContactForces;
+           obj.nu_inds = a + b;
+           obj.nu_inds = obj.nu_inds(:)';
            % Tangential force indices
            T_idx = 1:nContactForces;
-           T_idx([obj.normal_inds,obj.gamma_inds]) = [];
+           T_idx([obj.normal_inds,obj.gamma_inds,obj.nu_inds]) = [];
            obj.tangent_inds = T_idx;
            
            % Set index variables to get just the forces
            obj.force_inds = 1:nContactForces;
-           obj.force_inds(obj.gamma_inds) = [];
+           obj.force_inds([obj.gamma_inds, obj.nu_inds]) = [];
            
            % Set the relaxation variables
            if obj.options.nlcc_mode == 5
@@ -220,7 +231,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                         case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
                             dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
                         case ContactImplicitTrajectoryOptimizer.BACKWARD_EULER
-                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
+                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds([obj.normal_inds,obj.tangent_inds],i); obj.jl_inds(:,i)};
                         case ContactImplicitTrajectoryOptimizer.MIDPOINT
                             dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.u_inds(:,i+1); obj.lambda_inds(obj.force_inds,i); obj.jl_inds(:,i)};
                         case ContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
@@ -240,7 +251,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                         case ContactImplicitTrajectoryOptimizer.FORWARD_EULER
                             dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i)};
                         case ContactImplicitTrajectoryOptimizer.BACKWARD_EULER
-                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds(obj.force_inds,i)};
+                            dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.lambda_inds([obj.normal_inds,obj.tangent_inds],i)};
                         case ContactImplicitTrajectoryOptimizer.MIDPOINT
                             dyn_inds{i} = {obj.h_inds(i); obj.x_inds(:,i); obj.x_inds(:,i+1); obj.u_inds(:,i); obj.u_inds(:,i+1); obj.lambda_inds(obj.force_inds,i)};
                         case ContactImplicitTrajectoryOptimizer.SEMI_IMPLICIT
@@ -306,7 +317,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             inflimit = isinf(b);
             M(inflimit,:) = [];
             b(inflimit) = [];
-            cstr = LinearComplementarityConstraint_original(W, b, M, obj.lincc_mode, obj.lincc_slack);
+            cstr = LinearComplementarityConstraint_original(W, b, M, obj.options.lincc_mode, obj.options.lincc_slack);
             cstr.constraints{1} = cstr.constraints{1}.setName('JointForceNonneg');
             cstr.constraints{2} = cstr.constraints{2}.setName('JointLimitNonneg');
             cstr.constraints{3} = cstr.constraints{3}.setName('JointLimitCompl');
@@ -635,11 +646,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % end of the interval
             [H, C, B, dH, dC, dB] = obj.plant.manipulatorDynamics(q1, v1);
             % Get the contact jacobian (always at the end of the interval)
-            [J, dJ]  = obj.evalContactJacobian(q1);
+            [Jn,dJn,Jt, dJt]  = obj.getContactJacobian(q1);
+            J = cat(1,Jn, Jt);
+            dJ = cat(1,dJn, dJt);
             % Reshape the gradients back into tensor form
             dH = reshape(dH',[nQ, nQ, nQ]);
             dB = reshape(dB',[nQ, nU, nQ]);
-            dJ = permute(dJ, [2,1,3]);
+            dJ = permute(dJ, [2,1,3]);  % Transpose the Jacobian
             % Calculate the forward dynamics defects (position equation)
             fq = q1 - q0 - h * v1;
             dfq = [-v1,-eye(nQ),zeros(nQ,nV),eye(nQ),-h*eye(nV),zeros(nQ,nU + nL)];
@@ -847,7 +860,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % vectors. That is, if there are 3 contact points and 2
             % friction bases, then rows 1-3 are the positive friction
             % vectors and rows 4-6 are the negative friction vectors.
-            D = cat(1,D{:});            
+            D = cat(1,D{:});
             % Reshape the gradients
             dN = reshape(dN',[numel(q), numel(q), obj.numContacts]);
             dN = permute(dN,[3,1,2]);
@@ -865,6 +878,24 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             end
             J = cat(1, J{:});
             dJ = cat(1,dJ{:});
+        end
+        function [Jn, dJn, Jt, dJt] = getContactJacobian(obj, q)
+            % Get the normal components of the Jacobian
+            [~,~, ~, ~, ~, ~, ~, ~, Jn, Jt, dJn, dJt] = obj.plant.contactConstraints(q, false, obj.options.active_collision_options);
+            % Reshape the normal derivative
+            [np, nq] = size(Jn);
+            dJn = reshape(dJn, [np, nq, nq]);
+            % Reshape the tangent Jacobian
+            [np, nq] = size(Jt{1});
+            perm = reshape(1:obj.numContacts*obj.numFriction, [obj.numContacts, obj.numFriction])';
+            Jt = cat(1,Jt{:});
+            Jt = Jt(perm, :);
+            % Reshape the tangent derivative
+            for k = 1:length(dJt)
+                dJt{k} = reshape(dJt{k},[np,nq, nq]);
+            end
+            dJt = cat(1,dJt{:});
+            dJt = dJt(perm(:), :, :);
         end
         function [g, dg] = midpoint_running_fun(obj, cost_fun, h, x0, x1, u0, u1)
             
