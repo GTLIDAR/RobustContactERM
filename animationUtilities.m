@@ -274,6 +274,7 @@ classdef animationUtilities
             set(ax, 'XLimMode','manual','YLimMode','manual','xlim',xlims,'ylim',ylims);
             % Get the frame
             drawnow limitrate;
+            hold on;
             if nargin > 2 && ~isempty(savename)
                 pause(0.1);
                 writer.writeVideo(getframe(ax));
@@ -283,7 +284,7 @@ classdef animationUtilities
                 for k = 1:NPatch
                     set(patches{k}, 'xdata', xdata{n}(:,k), 'ydata', ydata{n}(:,k));
                 end
-                set(ax, 'XLimMode','manual','YLimMode','manual','xlim',xlims,'ylim',ylims);
+                set(ax, 'XLimMode','manual','YLimMode','manual');
                 drawnow limitrate;
                 if nargin > 2 && ~isempty(savename)
                     pause(0.1);

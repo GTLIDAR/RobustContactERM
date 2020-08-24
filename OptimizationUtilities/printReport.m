@@ -51,7 +51,7 @@ if ~isempty(soln.infeasible)
 end
 
 if optimOptions.options.nlcc_mode == 5
-   fprintf(fileID,'\nMaximum NCC Relaxation: %8.2e\n',max(soln.relax)); 
+   fprintf(fileID,'\nMaximum NCC Relaxation: %8.2e\n',max(soln.slacks)); 
 end
 
 fprintf(fileID, '\nNotes:\n');

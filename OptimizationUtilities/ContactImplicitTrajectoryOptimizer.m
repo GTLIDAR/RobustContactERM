@@ -70,6 +70,9 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             if ~isfield(options, 'relax_cost')
                options.relax_cost = 1; 
             end
+            if ~isfield(options, 'dynamicsMultiplier')
+               options.dynamicsMultiplier = 1; 
+            end
             % Construct the object
             obj = obj@DirectTrajectoryOptimization(plant, N, duration, options);    
         end     
@@ -580,8 +583,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                dfq = [dfq, zeros(size(Jl'))];
            end
            % Combine the defects and the derivatives
-           f = [fq; fv];
-           df = [dfq; dfv];
+           f = obj.options.dynamicsMultiplier*[fq; fv];
+           df = obj.options.dynamicsMultiplier*[dfq; dfv];
         end
         function [f, df] = backward_constraint_fun(obj, h, x0, x1, u, lambda, jlambda)
             %% BACKWARD_CONSTRAINT_FUN: Enforces dynamics using a Backward-Euler integration
@@ -662,8 +665,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 dfq = [dfq, zeros(size(Jl'))];
             end
             % Combine the defects and the derivatives
-            f = [fq; fv];
-            df = [dfq; dfv];
+            f = obj.options.dynamicsMultiplier*[fq; fv];
+            df = obj.options.dynamicsMultiplier*[dfq; dfv];
         end
         function [f, df] = midpoint_constraint_fun(obj, h, x0, x1, u0, u1, lambda, jlambda)
             %% MIDPOINT_CONSTRAINT_FUN: Enforces dynamics using Midpoint integration
@@ -748,8 +751,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 dfq = [dfq, zeros(size(Jl'))];
             end
             % Combine the defects and the derivatives
-            f = [fq; fv];
-            df = [dfq; dfv];
+            f = obj.options.dynamicsMultiplier*[fq; fv];
+            df = obj.options.dynamicsMultiplier*[dfq; dfv];
         end
         function [f, df] = semiimplicit_constraint_fun(obj, h, x0, x1, u, lambda, jlambda)
             %% SEMIIMPLICIT_CONSTRAINT_FUN: Enforces dynamics using Semi-Implicit Euler integration
@@ -829,8 +832,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 dfq = [dfq, zeros(size(Jl'))];
             end
             % Combine the defects and the derivatives
-            f = [fq; fv];
-            df = [dfq; dfv];
+            f = obj.options.dynamicsMultiplier*[fq; fv];
+            df = obj.options.dynamicsMultiplier*[dfq; dfv];
         end
         function [J, dJ] = evalContactJacobian(obj,q)
             

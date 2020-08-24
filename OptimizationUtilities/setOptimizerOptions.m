@@ -1,4 +1,4 @@
-function optimOptions = setOptimizerOptions(optimOptions, varargin)
+function [optimOptions, unmatched] = setOptimizerOptions(optimOptions, varargin)
 
 % Luke Drnach
 % February 28, 2020
@@ -62,7 +62,7 @@ addParameter(parser, 'time_option', 1, @(x) inrange(x, 1, 2));
 addParameter(parser, 'time_constraints', RobustContactImplicitTrajectoryOptimizer.BOUNDTIME, @(x) inrange(x, 1, 3));
 addParameter(parser, 'nlcc_mode',2, @(x) inrange(x, 1, 5));
 addParameter(parser, 'relax_cost',1, isPosScalar);
-addParameter(parser,'compl_slack',0, isNonnegScalar);
+addParameter(parser, 'compl_slack',0, isNonnegScalar);
 % Set the default values for Robust-Specific options
 addParameter(parser, 'distribution', RobustContactImplicitTrajectoryOptimizer.GAUSSIAN, @(x) inrange(x, 1, 2));
 addParameter(parser, 'heightVariance', 1, isPosScalar);
@@ -74,6 +74,7 @@ addParameter(parser, 'distanceScaling',1, isPosScalar);
 addParameter(parser, 'ermFrictionBias',0, isNonnegScalar);
 addParameter(parser, 'frictionCostMultiplier', 1, isPosScalar);
 addParameter(parser, 'distanceCostMultiplier', 1, isPosScalar);
+addParameter(parser, 'dynamicsMultiplier',1,isPosScalar);
 % Parse the inputs
 parse(parser, varargin{:});
 % Get the results from the input parser

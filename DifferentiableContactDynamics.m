@@ -326,35 +326,38 @@ classdef DifferentiableContactDynamics
         
         function [Jn, Jt, dJn, dJt, alphas] = contactJacobian(obj, q)
             
+            
+           % Get the Jacobian
+           [J,dJ] = obj.jacobian(q);
+            
            % Find the nearest point on the terrain 
            xA = obj.kinematics(q);
-           xB = obj.terrain.nearest(xA);
-           
-           % Calculate the gradient of the terrain at that point
-           [N, T] = obj.terrain.basis(xB);
-           % Expand N and T to select the appropriate contact point
-           N = mat2cell(N, size(N,1),ones(1,size(N,2)));
-           T = mat2cell(T, size(T,1), ones(1,size(T,2)));
-           N = blkdiag(N{:});
-           T = blkdiag(T{:});
-           T = [T, -T];
-           % Get the Jacobian
-           [J, dJ] = obj.jacobian(q);
-           
-           % Calculate the contact Jacobian and its derivatives
-           Jn = N'*J;
-           Jt = T'*J;
-           
-           dJn = zeros([size(Jn), obj.numQ]);
-           dJt = zeros([size(Jt), obj.numQ]);
-           
-           for n = 1:size(dJ, 3)
-              dJn(:,:,n) = N'*dJ(:,:,n);
-              dJt(:,:,n) = T'*dJ(:,:,n);
+           [dim, nPoints] = size(xA);
+           % Initialize
+           Jn = zeros(nPoints,numel(q));
+           dJn = zeros(nPoints, numel(q), numel(q));
+           Jt = zeros(2*nPoints, numel(q));
+           dJt = zeros(2*nPoints,numel(q),numel(q));
+           phi = zeros(nPoints,1);
+           for n = 1:nPoints
+              [xB,dX] = obj.terrain.nearest(xA(:,n));
+              [N,T,dN,dT] = obj.terrain.basis(xB);
+              % Jacobian of the current point
+              J_c = J((n-1)*dim+1:n*dim,:);
+              dJ_c = dJ((n-1)*dim + 1 : n*dim, :, :);
+              % Normal and tangential components
+              Jn(n,:) = N'*J_c;
+              Jt(2*n-1,:) = T'*J_c;
+              Jt(2*n,:) = -T'*J_c;
+              % Dervatives
+              for k = 1:numel(q)
+                  dJn(n,:,k) = (dN * dX * J_c(:,k))'*J_c + N'*dJ_c(:,:,k);
+                  dJt(2*n-1,:,k) = (dT * dX * J_c(:,k))'*J_c + T'*dJ_c(:,:,k);
+                  dJt(2*n,:,k) = -dJt(2*n-1,:,k);
+              end
+              % Calculate phi and alpha
+              phi(n) = N'*(xA(:,n) - xB);
            end
-           
-           % Calculate the alpha values
-           phi = N' * (xA(:) - xB(:));    %Signed distance function
            alphas = Jn * q - phi;
         end
                 

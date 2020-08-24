@@ -9,6 +9,7 @@ classdef SingleLegHopper <  Manipulator & DifferentiableContactDynamics
     end
     properties (Hidden)
         base_radius(1,1) double = 0.25;
+        link_radius(1,1) double = 0.02;
         numQ = 4;
         numU = 2;
     end
@@ -274,6 +275,48 @@ methods
             ylim(ylims);
             
         end
+    end
+    function [x,y] = visualize(self, q, ax)
+       %% VISUALIZE: Creates a visualization of the hopper at a specific configuration 
+        
+       if nargin == 2 && nargout == 0
+           figure();
+           ax = gca;
+       end
+       %% Do kinematics to get the joint positions
+       [x,y] = self.positions(q);
+       
+       %% Get linkage drawings for each of the links
+       % Base linkage (a ball)
+       [x_base, y_base] = self.drawLinkage(x(1), y(1), 0, self.base_radius, 0);
+       % Link 1 linkage
+       [x_1, y_1] = self.drawLinkage(x(1), y(1), self.lengths(1), self.link_radius, 3*pi/2+ q(3));
+       % Link 2 linkage
+       [x_2, y_2] = self.drawLinkage(x(2), y(2), self.lengths(2), self.link_radius, 3*pi/2 + q(3) + q(4));
+       
+       %% Draw all the linkages
+       if nargout == 0
+           hold(ax, 'on');
+           c = lines(3);
+           patch(ax, x_1, y_1, c(2,:));
+           patch(ax, x_2, y_2, c(3,:));
+           % Draw the base linkage last.
+           patch(ax, x_base, y_base, c(1,:));
+           axis equal;
+           yl = ylim;
+           % Draw the terrain
+           [xterrain, yterrain] = self.terrain.draw(xlim, 100);
+           xterrain = [xterrain(:); xterrain(end); xterrain(1); xterrain(1)];
+           ym = min(yl(1), yterrain(1));
+           yterrain = [yterrain(:); ym; ym; yterrain(1);];
+           patch(ax, xterrain, yterrain, [0.4,0.4,0.4]);
+           % Send the terrain to the back
+           ln = get(gca,'Children');
+           set(gca,'Children',ln(end:-1:1));
+       else
+           x = [x_1(:), x_2(:), x_base(:)];
+           y = [y_1(:), y_2(:), y_base(:)];
+       end
     end
     function m = totalMass(self)
        m = self.baseMass + sum(self.masses); 

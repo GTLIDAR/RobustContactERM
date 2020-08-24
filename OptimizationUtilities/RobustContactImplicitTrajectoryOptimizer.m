@@ -161,7 +161,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                % Add in the relaxing variables as a cost
                cost = FunctionHandleObjective(obj.N-1, @(x) obj.relaxed_nc_cost(x));
                cost = cost.setName('RelaxedNLCCost');
-               obj = obj.addCost(cost, obj.relax_inds);
+               obj = obj.addCost(cost, obj.slack_inds);
             end
         end
     end
@@ -645,7 +645,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 % Order the indices such that the argument is 
                 %   [x, lambdaN, gamma, lambdaT]
                 if obj.options.nlcc_mode == 5
-                    slidingIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds, i); obj.lambda_inds(obj.gamma_inds, i); obj.lambda_inds(obj.tangent_inds, i); obj.relax_inds(i)];
+                    slidingIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds, i); obj.lambda_inds(obj.gamma_inds, i); obj.lambda_inds(obj.tangent_inds, i); obj.slack_inds(i)];
                 else
                     slidingIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds, i); obj.lambda_inds(obj.gamma_inds, i); obj.lambda_inds(obj.tangent_inds, i)];
                 end
@@ -672,7 +672,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
              for i = 1:obj.N-1
                  % Reshape all the lambda_inds so the forces are grouped together as [normal, tangential, slack]
                  if obj.options.nlcc_mode == 5
-                     frictionIdx =  [obj.lambda_inds(obj.normal_inds,i); obj.lambda_inds(obj.tangent_inds,i); obj.lambda_inds(obj.gamma_inds,i); obj.relax_inds(i)];
+                     frictionIdx =  [obj.lambda_inds(obj.normal_inds,i); obj.lambda_inds(obj.tangent_inds,i); obj.lambda_inds(obj.gamma_inds,i); obj.slack_inds(i)];
                  else
                      frictionIdx =  [obj.lambda_inds(obj.normal_inds,i); obj.lambda_inds(obj.tangent_inds,i); obj.lambda_inds(obj.gamma_inds,i)];
                  end
@@ -699,7 +699,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             for i = 1:obj.N-1
                 % For distance, we only need [x, lambdaN];
                 if obj.options.nlcc_mode == 5
-                    distanceIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i); obj.relax_inds(i)];
+                    distanceIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i); obj.slack_inds(i)];
                 else
                     distanceIdx = [obj.x_inds(:,i+1); obj.lambda_inds(obj.normal_inds,i)];
                 end

@@ -26,7 +26,7 @@ classdef FlatTerrain < Terrain2D
             dx = zeros(numel(x), numel(xA));
             dx(1,1) = 1;
         end
-        function [N, T] = basis(obj, xB)
+        function [N, T,dN,dT] = basis(obj, xB)
            % BASIS: Returns the local coordinate basis for the terrain
            %
            %   For a flat terrain, the basis is simply the world
@@ -40,9 +40,8 @@ classdef FlatTerrain < Terrain2D
            T = obj.basis_mult*[1;0];
            
            % Replicate for each contact point
-           nPoints = size(xB, 2);
-           N = repmat(N, 1, nPoints);
-           T = repmat(T, 1, nPoints);
+           dN = zeros(2);
+           dT = zeros(2);
         end        
         function [x,y] = draw(obj, xlim, N)
            % DRAW: Draws the terrain within the limits
