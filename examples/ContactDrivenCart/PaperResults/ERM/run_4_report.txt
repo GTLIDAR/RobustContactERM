@@ -1,0 +1,40 @@
+Date: 27-Apr-2020
+Author: ldrnach
+
+Plant model: ContactDrivenCart
+
+Run Settings:
+	Duration: [1.00, 1.00]
+	Number of Knot Points: 101
+	Included Boundary Conditions? true
+	Included Running Cost? true
+	Included Final Cost? false
+
+SNOPT Settings:
+	 ElasticWeight: 1.00e+04
+	 IterationsLimit: 5.00e+04
+	 MajorFeasibilityTolerance: 1.00e-06
+	 MajorIterationsLimit: 5.00e+03
+	 MajorOptimalityTolerance: 1.00e-06
+	 MinorFeasibilityTolerance: 1.00e-06
+	 ScaleOption: 1.00e+00
+	 SuperbasicsLimit: 1.50e+03
+
+RobustContactImplicitTrajectoryOptimizer Settings: 
+	 contactCostMultiplier: 100000
+	 distanceScaling: 10
+	 distribution: 1
+	 ermMode: 1
+	 ermScaling: 0
+	 frictionVariance: 1
+	 heightVariance: 3.162278e-02
+	 integration_method: 2
+	 nlcc_mode: 2
+	 relax_cost: 1
+	 time_constraints: 3
+	 time_option: 1
+	 uncertainty_source: 2
+
+SNOPT terminated after 100.48 seconds with exit status 1
+
+Notes:
