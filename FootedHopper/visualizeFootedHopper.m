@@ -95,11 +95,10 @@ if nargin ==3
 end
 
 %% Animate the trajectory
-q = x(1:5,:);
 if nargin == 3
-    animationUtilities.visualizeTrajectory(plant, q, [savename,'.avi']);
+    animateSolution(plant, soln, [savename,'.avi']);
 else
-    animationUtilities.visualizeTrajectory(plant, q);
+    animateSolution(plant, soln);
 end
 
 end

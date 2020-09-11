@@ -992,8 +992,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         function obj = printCostsAndConstraints(obj, z)
            
             persistent iteration
+            persistent costfigure
             persistent costlines
-            persistent cstrlines
             if nargin == 1
                clear iteration;
                clear costlines;
@@ -1039,34 +1039,37 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % Make a figure
             if iteration  == 1
                 % Plot the figures
-                costlines = figure();
+                costfigure = figure();
+                costlines = cell(length(cstrNames) + length(costNames),1);
+                subplot(2,1,1);
                 for n = 1:length(costNames)
-                    subplot(length(costNames),1, n);
-                    plot(iteration, sum(cost.(costNames{n})),'k');
-                    ylabel(costNames{n});
+                   costlines{n} = plot(iteration, sum(cost.(costNames{n})),'LineWidth',1.5,'DisplayName',costNames{n});
+                   hold on;
                 end
+                ylabel('Cost');
                 xlabel('Iterations');
-                
+                set(gca,'Yscale','log');
+                legend show;
+                legend boxoff;
                 % Plot the constraints
-                cstrlines = figure();
+                subplot(2,1,2);
                 for n = 1:length(cstrNames)
-                    subplot(length(cstrNames), 1, n)
-                    plot(iteration, sum(cstr.(cstrNames{n})), 'k');
-                    ylabel(cstrNames{n})
+                   costlines{length(costNames)+n} = plot(iteration, sum(cstr.(cstrNames{n})), 'LineWidth', 1.5, 'DisplayName',cstrNames{n});
+                    hold on;
                 end
+                ylabel('Constraints');
                 xlabel('Iterations');
+                set(gca,'Yscale','log');
+                legend show;
+                legend boxoff;
             else
-                figure(costlines)
+                figure(costfigure)
                 for n = 1:length(costNames)
-                    subplot(length(costNames), 1, n)
-                    line = get(gca,'Children');
+                    line = costlines{n};
                     set(line, 'XData', [get(line, 'XData'), iteration], 'YData', [get(line, 'YData'), sum(cost.(costNames{n}))]);
                 end
-                drawnow limitrate;
-                figure(cstrlines)
                 for n = 1:length(cstrNames)
-                    subplot(length(cstrNames), 1, n)
-                    line = get(gca,'Children');
+                    line = costlines{length(costNames)+n};
                     set(line,'XData', [get(line,'XData'), iteration], 'YData', [get(line,'YData'), sum(cstr.(cstrNames{n}))]);
                 end
                 drawnow limitrate;

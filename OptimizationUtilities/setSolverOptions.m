@@ -12,6 +12,7 @@ addParameter(parser, 'MinorFeasibilityTolerance',1e-6, validPosScalar);
 addParameter(parser, 'ScaleOption',2, validScaleOpt);
 addParameter(parser, 'MajorIterationsLimit',1000, validPosInteger);
 addParameter(parser, 'IterationsLimit',10000, validPosInteger);
+addParameter(parser, 'MinorIterationsLimit',500,validPosInteger);
 addParameter(parser, 'SuperbasicsLimit',500, validPosInteger);
 addParameter(parser, 'ElasticWeight', 10^4, validPosScalar);
 % Check the inputs

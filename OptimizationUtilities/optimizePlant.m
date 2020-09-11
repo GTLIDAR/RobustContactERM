@@ -98,7 +98,7 @@ end
 prob = prob.setSolver('snopt');
 % Set the solver options for the problem
 solverFields = {'MajorFeasibilityTolerance','MajorOptimalityTolerance','MinorFeasibilityTolerance',...
-    'ScaleOption','IterationsLimit','ElasticWeight','MajorIterationsLimit','SuperbasicsLimit','print'};
+    'ScaleOption','IterationsLimit','ElasticWeight','MajorIterationsLimit','SuperbasicsLimit','print','MinorIterationsLimit'};
 solve_fields = fieldnames(solverOptions);
 fprintf('Setting solver options\n');
 for n = 1:length(solve_fields)

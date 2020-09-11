@@ -339,6 +339,20 @@ methods
            dB = zeros(5,3,5);
        end
     end
+    function pCOM = centerOfMass(self, q)
+       % Calculate the center of mass
+        mT = self.baseMass + sum(self.masses);
+        g1 = (self.com(1)*self.masses(1) + self.masses(2) + self.masses(3))*self.lengths(1);
+        g2 = (self.com(2)*self.masses(2) + self.masses(3))*self.lengths(2);
+        g3 = self.masses(3)*(self.com(3)-self.heelFraction)*self.lengths(3);
+        
+        xCOM = mT*q(1) + g1 * sin(q(3)) + g2*sin(q(3)+q(4)) + g3*sin(q(3)+q(4)+q(5));
+        yCOM = mT*q(2) + g1 * cos(q(3)) + g2*cos(q(3)+q(4)) + g3*cos(q(3)+q(4)+q(5));
+        
+        pCOM = [xCOM; yCOM]./mT;
+        
+        
+    end
     %% -------------- VISUALIZATION METHODS -------------------- %%
     function [x,y] = draw(self, q, ax) 
         % First get the positions of all the joint centers

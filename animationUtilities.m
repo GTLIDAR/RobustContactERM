@@ -390,10 +390,9 @@ classdef animationUtilities
                 set([sketches{:}], {'XData'},xdata(:,n), {'YData'},ydata(:,n));
                 set(ax,'XLimMode','manual','YLimMode','manual','xlim',xlims,'ylim',ylims);
                 drawnow;
+                pause(0.01);
                 if nargin >= 3 && ~isempty(savename)
                     writer.writeVideo(getframe(ax));
-                else
-                    pause(0.01);
                 end
             end
             % Close the video to save it.
@@ -432,8 +431,12 @@ classdef animationUtilities
                 end
             end
             % Subsample the number of frames to plot
-            idx = round(linspace(1,N,nframes));
-            
+            if isscalar(nframes)
+                idx = round(linspace(1,N,nframes));
+            else
+                idx = nframes;
+                nframes = length(idx);
+            end
             % Get the data to plot
             xdata = cell(numTraj,nframes);
             ydata = cell(numTraj,nframes);
