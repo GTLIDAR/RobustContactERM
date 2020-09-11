@@ -1,0 +1,62 @@
+Path 4.7.03: Matlab Link
+4 row/cols, 10 non-zeros, 62.50% dense.
+
+Could not open options file: path.opt
+Using defaults.
+Path 4.7.03 (Mon Feb 27 19:48:03 2012)
+Written by Todd Munson, Steven Dirkse, and Michael Ferris
+
+MCPR: One:    0 Two:    0 Thr:    0 Qua:    0 WBd:    0 Fix:    1 IFx:    0
+Preprocessed size   : 3
+
+INITIAL POINT STATISTICS
+Maximum of X. . . . . . . . . .  0.0000e+00 var: (x[    2])
+Maximum of F. . . . . . . . . .  6.8670e+00 eqn: (f[    4])
+Maximum of Grad F . . . . . . .  1.0000e+00 eqn: (f[    4])
+                                            var: (x[    2])
+
+INITIAL JACOBIAN NORM STATISTICS
+Maximum Row Norm. . . . . . . .  2.0000e+00 eqn: (f[    4])
+Minimum Row Norm. . . . . . . .  1.0200e+00 eqn: (f[    2])
+Maximum Column Norm . . . . . .  2.0000e+00 var: (x[    4])
+Minimum Column Norm . . . . . .  1.0200e+00 var: (x[    2])
+
+Crash Log
+major  func  diff  size  residual    step       prox   (label)
+    0     0             9.5015e+00             0.0e+00 (f[    2])
+    1     9     1     1 6.4335e+00  1.2e-02    0.0e+00 (f[    2])
+    2    19     0     1 6.2224e+00  1.9e-03    0.0e+00 (f[    2])
+pn_search terminated: no basis change.
+
+Major Iteration Log
+major minor  func  grad  residual    step  type prox    inorm  (label)
+    0     0    20     3 6.2224e+00           I 0.0e+00 6.2e+00 (f[    2])
+    1     2    21     4 0.0000e+00  1.0e+00 SM 0.0e+00 0.0e+00 (f[    2])
+
+FINAL STATISTICS
+Inf-Norm of Complementarity . .  0.0000e+00 eqn: (f[    2])
+Inf-Norm of Normal Map. . . . .  0.0000e+00 eqn: (f[    2])
+Inf-Norm of Minimum Map . . . .  0.0000e+00 eqn: (f[    2])
+Inf-Norm of Fischer Function. .  0.0000e+00 eqn: (f[    2])
+Inf-Norm of Grad Fischer Fcn. .  0.0000e+00 eqn: (f[    2])
+Two-Norm of Grad Fischer Fcn. .  0.0000e+00
+
+FINAL POINT STATISTICS
+Maximum of X. . . . . . . . . .  6.8670e+00 var: (x[    2])
+Maximum of F. . . . . . . . . .  9.3642e+00 eqn: (f[    3])
+Maximum of Grad F . . . . . . .  1.0000e+00 eqn: (f[    4])
+                                            var: (x[    2])
+
+ ** EXIT - solution found.
+
+Major Iterations. . . . 1
+Minor Iterations. . . . 2
+Restarts. . . . . . . . 0
+Crash Iterations. . . . 2
+Gradient Steps. . . . . 0
+Function Evaluations. . 21
+Gradient Evaluations. . 4
+Basis Time. . . . . . . 0.000024
+Total Time. . . . . . . 0.000182
+Residual. . . . . . . . 0.000000e+00
+Postsolved residual: 0.0000e+00

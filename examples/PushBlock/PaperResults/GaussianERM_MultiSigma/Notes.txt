@@ -1,0 +1,54 @@
+February 6, 2020
+Luke Drnach
+
+THESE ARE THE GOOD RESULTS.
+
+All the data in this folder was collected using a Gaussian ERM for friction
+coefficient uncertainty in the Push Block example. The relevant script is 
+PushBlock_Robust_MultipleSigma.m
+
+The SNOPT settings were:
+    Major Optimality: 1e-8
+    Major Feasibility: 1e-8
+    Minor Feasibility: 1e-6
+    Scale Option: 1
+    Iterations Limit: 50,000
+    Elastic Weight: 10^4
+    Major Iterations Limit: 5000
+    Superbasics Limit: 1500
+
+The running cost penalizes state differences from the final state, and the 
+control cost is 100 times more than the state cost. 
+
+All examples use Backward Euler Integration.
+
+The Uncertainty parameters are
+    Friction Coefficient: 0.5
+    Uncertainty: Logarithmically scaled between 0.0001 and 1
+
+ERM Cost Multiplier was 1,000,000
+
+All trials converged with no exit status. Most converged in about 1 minute, 
+while some converged only after 100 seconds. The final trial converged after
+6 seconds.
+
+
+Remarks:
+    The files in this directory were created with the Refined Nominal trajectory.
+    The files in the subdirectories were created with an unrefined nominal trajectory.
+    The difference is almost purely aesthetic. 
+ 
+    
+    For sigma < 0.01, the ERM trajectories converge to the nominal trajectory
+        - Will need to verify this with a log plot of sigma and divergence, 
+          but it looks that way
+
+    For moderate uncertainty (0.01 < sigma < 1), the behavior is to shorten
+    the duration the block slides. This has the effect of reducing the cost 
+    associated with the unknown friction cone
+
+    For large sigma (sigma = 1), the solution devolves into a bang-bang 
+    controller, and there is no tangential force (for some reason). There is 
+    normal force, so the block is still on the surface and should incur some
+    frictional force. A check of the vertical displacement of the block also
+    confirms that there should be frictional force. 

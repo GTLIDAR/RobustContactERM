@@ -1,0 +1,45 @@
+February 6, 2020
+Luke Drnach
+
+
+The Nominal Data
+
+The data in this directory were generated using the scripts in this directory.
+The _Nominal data set was generated using PushBlock_Robust_NCP_Nominal.m
+with a straight line trajectory as an initial guess and a running cost that
+penalized control and state magnitudes squared. 
+
+The optimization was run with the following parameters:
+    Major Optimality: 1e-6
+    Major Feasibility: 1e-6
+    Minor Feasibility: 1e-3
+
+Contact was solved using the standard Nonlinear Complementarity model.
+
+The optimization halted without any exit status; however, there are large 
+deviations in the normal force that are not representitive of the underlying
+physical phenomenon. This oscillation necessitated the refined data below.
+
+Remarks:
+    The nominal optimization only works with a running cost that penalizes 
+    state and control magnitudes. Penalizing the deviation from the end state
+    results in an unuseable final trajectory and exit messaged. Optimizing
+    without a running cost results in a long running optimization. Other 
+    attempts to change the parameters of the optimization also result in 
+    exit statuses from SNOPT.
+
+The NominalRefined Data
+
+The data in _NominalRefined were generated using PushBlock_Robust_NCP_NominalRefined.mat
+with the _Nominal.mat data as a warm start. The running cost penalized state
+deviations from the final position and the control magnitude, with an extra
+weight of 100 placed on the control magnitudes. 
+
+The optimization was run with the following parameters:
+    Major Optimality: 1e-8
+    Major Feasibility: 1e-8
+    Minor Feasibility: 1e-3
+
+The optimization halted after 11 seconds with no exit status. The resulting 
+forces show no large variation; all variation is on the order of 10^-10.
+

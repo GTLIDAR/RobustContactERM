@@ -1,5 +1,17 @@
 classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
-   
+   %% CONTACTIMPLICITTRAJECTORYOPTIMIZER: Extension class for motion planning with intermittent contact
+   %
+   %    ContactImplicitTrajectoryOptimize implements contact-implicit
+   %    trajectory optimization [Posa et al 2016] by extending the methods
+   %    in DirectTrajectoryOptimization and including complementarity
+   %    constraints to model contact forces.
+   %
+   %    ContactImplicitTrajectoryOptimizer also implements joint limits
+   %    using complementarity constraints.
+   %
+   %    Luke Drnach
+   %    September 11, 2020
+        
     properties
         numContacts;    % Number of contacts
         numFriction;    % Number of friction basis vectors per contact
@@ -12,12 +24,9 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         slack_inds = [];% Indices for the NCC Slack variables    
                 
         nJl = 0;        % Number of joint limits
-        jl_inds =[];    % Joint limit force indices
-
-          
-        lincc_mode = 1; % Mode for linear complementarity constraints (Joint Limits)
-        lincc_slack = 0;% Slack variable for linear complementarity constraints (Joint Limits)    
-    end  
+        jl_inds =[];    % Joint limit force indices   
+    end
+        
     properties (Constant)
         % INTEGRATION METHODS
         FORWARD_EULER = 1;
@@ -72,6 +81,17 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             end
             if ~isfield(options, 'dynamicsMultiplier')
                options.dynamicsMultiplier = 1; 
+            end
+            if ~isfield(options, 'forceMultiplier')
+                options.forceMultiplier = 1;
+            end
+            if ~isfield(options, 'lincc_mode')
+                % Mode for linear complementarity constraints (Joint Limits)
+                options.lincc_mode = 1; 
+            end
+            if ~isfield(options, 'lincc_slack')
+                % Slack variable for linear complementarity constraints (Joint Limits)
+                options.lincc_slack = 0;    
             end
             % Construct the object
             obj = obj@DirectTrajectoryOptimization(plant, N, duration, options);    
@@ -309,7 +329,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             inflimit = isinf(b);
             M(inflimit,:) = [];
             b(inflimit) = [];
-            cstr = LinearComplementarityConstraint_original(W, b, M, obj.lincc_mode, obj.lincc_slack);
+            cstr = LinearComplementarityConstraint_original(W, b, M, obj.options.lincc_mode, obj.options.lincc_slack);
             cstr.constraints{1} = cstr.constraints{1}.setName('JointForceNonneg');
             cstr.constraints{2} = cstr.constraints{2}.setName('JointLimitNonneg');
             cstr.constraints{3} = cstr.constraints{3}.setName('JointLimitCompl');
