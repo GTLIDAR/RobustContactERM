@@ -1,5 +1,17 @@
 function printReport(plant, soln, solverOptions, optimOptions, guesstag, filename)
-
+%% printReport: creates a text file documenting a trajectory optimization run
+%
+%   printReport generates a .txt file detailing the settings used in a
+%   trajectory optimization run, the total run time, and any exit
+%   information returned by SNOPT. printReport also prints infeasible
+%   constraints, if there are any. 
+%
+%   printReport takes as input the plant used in the trajectory
+%   optimization, a structure containing the solution and it's associated
+%   information (including runtime and exit status), the options used in
+%   SNOPT and in the general trajectory optimization code, as well as
+%   additional optional string inputs giving information about the
+%   warmstart. 
 if nargin < 6
    fileID = fopen('report.txt','w');
 else

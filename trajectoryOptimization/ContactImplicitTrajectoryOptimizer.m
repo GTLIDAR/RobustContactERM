@@ -43,7 +43,17 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         function obj = ContactImplicitTrajectoryOptimizer(plant, N, duration, options)
             %% CONTACTIMPLICITTRAJECTORYOPTIMIZER: Construtor Method
             %
-            %   
+            %   Arguments:
+            %       plant: A model of the system, including kinematics and
+            %       dynamics
+            %       N: the total number of knot points
+            %       duration: the min and max allowed timespans for the
+            %       trajectory
+            %       options: an optional structure containing additional
+            %       values for the optimization
+            %
+            %   Return values:
+            %       obj: a ContactImplicitTrajectoryOptimizer object.
             
             % Create the options structure
             if nargin < 4 
@@ -150,6 +160,30 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            
         end
         function [xtraj, utraj, ltraj,jltraj, slacks, z,F, info, infeasible] = solveTraj(obj, t_init, traj_init)
+            %% SolveTraj: Solve Trajectory Optimization problem
+            %
+            %   Arguments:
+            %       t_init: initial vector of timepoints for the knot
+            %       points
+            %       traj_init: structure containing the initial guess at
+            %       the trajectory solution
+            %
+            %   Return values:
+            %       xtraj: a PPTrajectory object containing the optimized
+            %       state trajectory
+            %       utraj: a PPTrajectory object containing the optimized
+            %       control trajectory
+            %       ltraj:  a PPTrajectory object containing the optimized
+            %       contact force trajectory
+            %       jltraj: a PPTrajectory object containing the optimized
+            %       joint limit forces
+            %       slacks: a vector containing all the slack variables
+            %       used in the trajectory optimization
+            %       z: the complete decision variable list 
+            %       F:  the final value of the overall optimization cost
+            %       info: SNOPT exit code
+            %       infeasible: a list of infeasible constraints
+            
             % Solve the problem using
             [xtraj, utraj, z, F, info, infeasible] = solveTraj@DirectTrajectoryOptimization(obj, t_init, traj_init);
             
@@ -204,7 +238,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         function obj = addDynamicConstraints(obj)
             %% addDynamicConstraints: Add the dynamics as constraints to the problem
             %
+            %   obj = addDynamicConstraints(obj) overloads the method in
+            %   DirectTrajectoryOptimization to add the dynamics, including
+            %   contact and joint limit constraints, to the trajectory
+            %   optimization problem.
             %
+            %   This method is called internally when the object is
+            %   constructed.
             
             % Get some parameters about the system
             nX = obj.plant.getNumStates;
@@ -284,6 +324,14 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             
         end   
         function obj = addContactConstraints(obj)
+            %% addContactConstraints: adds the complementarity constraints governing contact
+            %
+            %   obj = addContactConstraints(obj) adds the
+            %   complementarity constraints governing contact to the
+            %   nonlinear program. 
+            %
+            %   This method is called internally when the object is
+            %   constructed.
             
             nX = obj.plant.getNumStates();
             % NC Constraint with no slack variables - original constraint
@@ -319,6 +367,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         end
         function obj = addJointLimitConstraints(obj)
             %% Add joint limit constraints to the problem
+            %
+            %   obj = addJointLimitConstraints(obj) adds linear
+            %   complementarity constraints governing joint limits to the 
+            %   trajectory optimization problem.
+            %
+            %   This method is called internally when the object is
+            %   constructed.
             
             nQ = obj.plant.getNumPositions();
             % Create a linear complementarity constraint for the joint
@@ -342,7 +397,22 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
         function obj = addRunningCost(obj, running_cost_function, name)
            %% addRunningCost: add the running cost function as the objective
            %
-           %    
+           %    obj = addRunningCost(obj, cost_func, name) adds an
+           %    objective function to every knot point in the trajectory
+           %    optimization. Optionally, the method labels this cost
+           %    function for ease of use with printing costs and
+           %    constraints
+           %
+           %    Arguments:
+           %        cost_func: A handle to the running cost function, which
+           %        must take as arguments the timestep h, the current
+           %        state x, and the current controls u. cost_func must
+           %        return the value and gradient of the cost function,
+           %        i.e. it must have the syntax:
+           %           [f, df] = cost_func(h, x, u);
+           %        name: an optional argument for labeling the cost
+           %        function
+           
             nX = obj.plant.getNumStates();
             nU = obj.plant.getNumInputs();
             for i=1:obj.N-1
@@ -555,6 +625,9 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            % rule. Specifically:
            %        f = x[k+1] - x[k] - hg(x[k])
            
+           % Scale the force variables
+           lambda = obj.options.forceMultiplier * lambda;
+           
            % Get some parameters about the system
            nQ = obj.plant.getNumPositions;
            nV = obj.plant.getNumVelocities;
@@ -590,7 +663,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            dHv = squeeze(sum(dH .* (v1 - v0)', 2));
            dBu = squeeze(sum(dB .* u', 2));
            dJl = squeeze(sum(dJ .* lambda', 2));
-           dfv = [-(B*u - C), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -dJl, H, -h*B, -J'];
+           dfv = [-(B*u - C), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -dJl, H, -h*B, -obj.options.forceMultiplier*J'];
            % Add joint limits
            if obj.nJl > 0
                Jl = [eye(nQ); -eye(nQ)];
@@ -637,6 +710,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % rule. Specifically:
             %        f = x[k+1] - x[k] - hg(x[k+1])
             
+            % Scale the force variables
+            lambda = obj.options.forceMultiplier * lambda;
             % Get some parameters about the system
             nQ = obj.plant.getNumPositions;
             nV = obj.plant.getNumVelocities;
@@ -672,7 +747,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dHv = squeeze(sum(dH .* (v1 - v0)', 2));
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
-            dfv = [C - B*u, zeros(nV, nQ), -H, dHv + h*(dC(:,1:nQ) - dBu) - dJl, H + h*dC(:,nQ+1:nQ+nV), -h*B, -J'];
+            dfv = [C - B*u, zeros(nV, nQ), -H, dHv + h*(dC(:,1:nQ) - dBu) - dJl, H + h*dC(:,nQ+1:nQ+nV), -h*B, -obj.options.forceMultiplier*J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
@@ -720,6 +795,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % Specifically:
             %        f = x[k+1] - x[k] - hg(1/2 * (x[k] + x[k+1]))
 
+            % Scale the force variables
+            lambda = obj.options.forceMultiplier * lambda;
             % Get some parameters about the system
             nQ = obj.plant.getNumPositions;
             nV = obj.plant.getNumVelocities;
@@ -758,7 +835,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
             dfv = [-(B*u - C), 0.5*(dHv - h*(dBu - dC(:,1:nQ))), -H + h*0.5*dC(:,nQ+1:nQ+nV),...
-                0.5*(dHv - h*(dBu - dC(:,1:nQ))) - dJl, H + h*0.5*dC(:,nQ+1:nQ+nV), -h*0.5*B,-h*0.5*B, -J'];
+                0.5*(dHv - h*(dBu - dC(:,1:nQ))) - dJl, H + h*0.5*dC(:,nQ+1:nQ+nV), -h*0.5*B,-h*0.5*B, -obj.options.forceMultiplier*J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
@@ -804,6 +881,8 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             %                the defects with respect to each of the inputs
             %                (in order)
             
+            % Scale the force variables
+            lambda = obj.options.forceMultiplier * lambda;
             % Get some parameters about the system
             nQ = obj.plant.getNumPositions();
             nV = obj.plant.getNumVelocities();
@@ -839,7 +918,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dHv = squeeze(sum(dH .* (v1 - v0)', 2));
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
-            dfv = [-(B*u - C), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -dJl, H, -h*B, -J'];
+            dfv = [-(B*u - C), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -dJl, H, -h*B, -obj.options.forceMultiplier*J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
@@ -856,6 +935,26 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             df = obj.options.dynamicsMultiplier*[dfq; dfv];
         end
         function [J, dJ] = evalContactJacobian(obj,q)
+            %% evalContactJacobian: returns the contact Jacobian
+            %
+            %   evalContactJacobian returns the mapping between the
+            %   configuration rates and the contact point velocities at the
+            %   current configuration.
+            %
+            %   Syntax:
+            %       [J,dJ] = obj.evalContactJacobian(q)
+            %
+            %   Arguments:
+            %       q: The configuration vector of the plant model in OBJ
+            %
+            %   Return Values:
+            %       J: the contact Jacobian, organized in blocks by contact
+            %       point J = [J1; J2; ...], where each block contains
+            %       normal and tangential components, Ji = [Jni, Jti];
+            %       dJ: the gradient of the contact Jacobian with respect
+            %       to the configuration variables. dJ(:,:,n) is the
+            %       derivative with respect to q(n).
+            
             
             % Get the normal and tangential components of the Jacobian
             [~,~, ~, ~, ~, ~, ~, ~, N, D, dN, dD] = obj.plant.contactConstraints(q, false, obj.options.active_collision_options);
@@ -878,7 +977,6 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 dD{n} = permute(dD{n},[3,1,2]);
             end
             dD = cat(1,dD{:});
-            %% TODO: FIX THE JACOBIAN DERIVATIVES FOR MULTI-CONTACT
             for k = 1:obj.numContacts
                 % Jacobian for the kth contact
                 J{k} = [N(k,:); D(k:obj.numContacts:end,:)];
@@ -889,7 +987,11 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dJ = cat(1,dJ{:});
         end
         function [g, dg] = midpoint_running_fun(obj, cost_fun, h, x0, x1, u0, u1)
-            
+            %% midpoint_running_fun: Wrapper function for running costs with midpoint integration
+            %
+            %   midpoint_running_fun is an internal function wrapping the
+            %   running costs in the case when midpoint integration is
+            %   used.
             nX = obj.plant.getNumStates();
             nU = obj.plant.getNumInputs();
             [g, dh] = cost_fun(h, 0.5*(x0 + x1), 0.5*(u0 + u1));
@@ -900,7 +1002,12 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dg = [dh(:,1) + g, 0.5*dh(:,2:1 + nX), 0.5*dh(:, 2:1 + nX), 0.5 * dh(:, nX+2 : nX+nU+1), 0.5 * dh(:, nX+2: nX + nU + 1)];
         end
         function [g, dg] = reimann_sum(obj, cost_fun, h, x0, u0)
-            
+            %% reimann_sum: a wrapper function for integrating the running costs
+            %
+            %   reimann_sum is a wrapper function for the running cost.
+            %   reimann_sum multiplies the cost function evaluation by the
+            %   timestep at the current knot point to correctly integrate
+            %   the cost.
             [f, df] = cost_fun(h, x0, u0);
             g = h * f;
             dg = h * df;
@@ -1003,6 +1110,10 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
     methods
         function obj = enableCostDisplay(obj)
             %% ENABLECOSTDISPLAY: Display Each of the Costs and Constraints associated with the problem
+            %
+            %   obj = obj.enableCostDisplay() calculates the individual
+            %   cost and constraint values at each major iteration and
+            %   prints the values to the screen and to a figure.
             
             % Clear and persistent variables
            obj.printCostsAndConstraints(); 
@@ -1010,7 +1121,15 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            obj = obj.addDisplayFunction(@(z)obj.printCostsAndConstraints(z));
         end      
         function obj = printCostsAndConstraints(obj, z)
-           
+           %% PrintCostsAndConstraints: prints costs and constraints to the screen
+           %
+           %    PrintCostsAndConstraints calculates the values of each cost
+           %    and constraint function in the optimization, given the
+           %    decision variable list z. PrintCostsAndConstraints then
+           %    prints the values to the terminal and to a figure.
+           %
+           %    printCostsAndConstraints is called internally whenever
+           %    enableCostDisplay has already been called at least once.
             persistent iteration
             persistent costfigure
             persistent costlines
@@ -1099,7 +1218,14 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             
         end
         function [costVals, cstrViol, cstrVal] = calculateCostsAndConstraints(obj,z)
-            
+            %% calculcateCostsAndConstraints: calculates cost and constraint values from the decision variable list
+            %
+            %   calculateCostsAndConstraints is a helper function for
+            %   calculating cost values and constraint violations from the
+            %   decision variable list.
+            %
+            %   calculateCostsAndConstraints is called internally by
+            %   printCostsAndConstraints.
             
             %% Cost function Values
             numCosts = length(obj.cost);
@@ -1162,7 +1288,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                 cstrViol.(uniqueNames{n}) = viols(id == n);
             end
         end
-        function cstrVals = calculatContactConstraints(obj, z)
+        function cstrVals = calculateContactConstraints(obj, z)
             %% calculateContactConstraints: Helper function for calculating contact constraints
             cstrVals = zeros(obj.numContacts * (2 + obj.numFriction), obj.N-1);
             for n = 1:obj.N-1
@@ -1172,7 +1298,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
     end
     methods (Access = protected)
         function [f, df] = relaxed_nc_cost(obj, x)
-            % scaledSumCost: 
+            %% Relaxed_NC_Cost: additional cost function penalizing complementarity relaxation
+            %
+            %   relaxed_nc_cost implements a cost function to penalize the
+            %   relaxation of the complementarity constraints. 
+            %
+            %   relaxed_nc_cost is called internally when the object is
+            %   constructed.
             f = obj.options.relax_cost * sum(x(:));
             df = obj.options.relax_cost * ones(1, numel(x));
         end

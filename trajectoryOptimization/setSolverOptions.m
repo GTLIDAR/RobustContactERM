@@ -1,4 +1,10 @@
 function solverOptions = setSolverOptions(solverOptions, varargin)
+%% setSolverOptions: input parser and checker for valid options for SNOPT
+%
+%   setSolverOptions is a helper function for setting and saving the
+%   options for SNOPT between optimization runs. setSolverOptions reads in
+%   a list of Name-Value pair arguments - and any existing options - and
+%   returns a structure containing checked Name-Value settings.
 
 % Create an input parser
 parser = inputParser;

@@ -1,5 +1,17 @@
 function [optimOptions, unmatched] = setOptimizerOptions(optimOptions, varargin)
-
+%% setOptimOptions: input parser and checker for valid options for trajectory optimization
+%
+%   setOptimOptions is a helper function for setting and saving the
+%   options for trajectory optimization between optimization runs. 
+%   setOptimOptions reads in a list of Name-Value pair arguments - and any 
+%   existing options - and returns a structure containing checked Name-Value 
+%   settings.
+%
+%   setOptimOptions does not check options related to SNOPT.
+%   setOptimOptions checks settings related to the trajectory optimization
+%   code implementation that are not handled directly by SNOPT. see
+%   setSolverOptions for input checking and parsing related to SNOPT.
+%
 % Luke Drnach
 % February 28, 2020
 
