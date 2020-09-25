@@ -10,5 +10,5 @@ This repository contains code for robust contact-implicit trajectory optimizatio
 * Authors: Luke Drnach and Ye Zhao
 * Affiliation: [The LIDAR Lab](http://lab-idar.gatech.edu/), Georgia Institute of Technology
 
-This code was tested in *MATLAB 2017a* with *Ubuntu 16.04* and a MATlAB version of [*Drake*](https://drake.mit.edu)
+This code was tested in *MATLAB 2017a* with *Ubuntu 16.04* and a MATLAB version of [*Drake*](https://drake.mit.edu)
 
