@@ -13,9 +13,9 @@ prob = prob.addStateConstraint(ConstantConstraint(x0), 1);
 prob = prob.addStateConstraint(ConstantConstraint(xf), N);
 % Set options for the solver
 prob = prob.setSolver('snopt');
-prob = prob.setSolverOptions('snopt','MajorFeasibilityTolerance',1e-8);     %Default: 1e-6
-prob = prob.setSolverOptions('snopt','MajorOptimalityTolerance',1e-8);      %Default: 1e-6
-prob = prob.setSolverOptions('snopt','MinorFeasibilityTolerance',1e-6);     %Default: 1e-6
+prob = prob.setSolverOptions('snopt','MajorFeasibilityTolerance',1e-6);     %Default: 1e-6
+prob = prob.setSolverOptions('snopt','MajorOptimalityTolerance',1e-6);      %Default: 1e-6
+prob = prob.setSolverOptions('snopt','MinorFeasibilityTolerance',1e-4);     %Default: 1e-6
 prob = prob.setSolverOptions('snopt','ScaleOption',1);                      %Default: 1
 prob = prob.setSolverOptions('snopt','IterationsLimit',50000);              %Default: 10,000
 prob = prob.setSolverOptions('snopt','ElasticWeight',10^4);                 %Default: 10^4

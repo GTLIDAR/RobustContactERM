@@ -641,7 +641,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 dfmu(~degenerate) = -sigma.^2 .* (pdf + (x + mu).*dp_mu) + 2.*mu .* cdf + (sigma.^2 + mu.^2 - x.^2 ).* dc_mu;
                 dfsigma(~degenerate) = -2.*sigma .* (x + mu) .* pdf - sigma.^2 .* (x + mu) .* dp_sigma + 2.*sigma .* cdf + (sigma.^2 + mu.^2 - x.^2) .* dc_sigma;
             end
-            if any (degenerate)
+            if any(degenerate)
                 % Handle the degenerate case
                 x_idx = (x_degenerate < mu_degenerate);
                 g = zeros(length(x_degenerate), 1);
