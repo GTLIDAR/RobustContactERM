@@ -4,15 +4,15 @@ function PushBlock_Robust_Nominal()
 
 %   Luke Drnach
 %   December 17, 2019
+% 
+% % Add in the necessary paths
+% here = pwd;
+% cd ..
+% add_drake;
+% cd(here);
+% addpath(genpath('PATH_LCP'));
 
-% Add in the necessary paths
-here = pwd;
-cd ..
-add_drake;
-cd(here);
-addpath(genpath('PATH_LCP'));
-
-name = 'PushBlock_Robust_NominalWorseCase';
+name = 'PushBlock_Robust_Nominal';
 % Create the plant model
 dt = 0.01;
 plant = Block();
@@ -33,7 +33,7 @@ N = numel(t_init);
 options.integration_method = RobustContactImplicitTrajectoryOptimizer.BACKWARD_EULER;
 options.contactCostMultiplier = 5;
 options.uncertainty_source = RobustContactImplicitTrajectoryOptimizer.NO_UNCERTAINTY;
-options.complementarity_solver = RobustContactImplicitTrajectoryOptimizer.NONE;
+% options.complementarity_solver = RobustContactImplicitTrajectoryOptimizer.NONE;
 options.frictionVariance = 0.1;
 prob = RobustContactImplicitTrajectoryOptimizer(plant, N, Tf, options);
 

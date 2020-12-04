@@ -5,21 +5,21 @@ function PushBlock_Robust_RefineNominal()
 %   Luke Drnach
 %   December 17, 2019
 
-% Add in the necessary paths
-here = pwd;
-cd ..
-add_drake;
-cd(here);
-addpath(genpath('PATH_LCP'));
+% % Add in the necessary paths
+% here = pwd;
+% cd ..
+% add_drake;
+% cd(here);
+% addpath(genpath('PATH_LCP'));
 
-name = 'PushBlock_Robust_NCP_WorseCase';
+name = 'PushBlock_Robust_RefinedNominal';
 
 % Load the plant and conditions from the warm start
-nominal = load('WarmStarts/PushBlock_Robust_NCP_Nominal.mat');
+nominal = load([pwd,'/PushBlock_Robust_Nominal.mat']);
 plant = nominal.plant;
 % Specify the initial and final conditions
 x0 = nominal.x0;
-xf = nominal.xf';
+xf = nominal.xf;
 t_init = nominal.t_init; 
 % Get the warm start trajectories
 traj_init.x = nominal.xtraj;
