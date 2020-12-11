@@ -161,13 +161,13 @@ classdef FootedHopperConstraintsTest < matlab.unittest.TestCase
             x = [testCase.q; testCase.dq];
             dt  = 0.01;
             % Distance ERM value
-            [~, df] = testCase.optimizer.normalDistanceERMCost(dt, x, lambdaN);
+            [~, df] = testCase.optimizer.normalDistanceERMCost(x, lambdaN);
             % Check each of the derivatives
-            df_est = testCase.finiteDifference(@(z) testCase.optimizer.normalDistanceERMCost(z, x, lambdaN), dt);
-            testCase.verifyEqual(df(:,1), df_est, 'RelTol',testCase.tol, 'Distance ERM stepsize gradient inaccurate');
-            df_est = testCase.finiteDifference(@(z) testCase.optimizer.normalDistanceERMCost(dt, z, lambdaN), x);
+%             df_est = testCase.finiteDifference(@(z) testCase.optimizer.normalDistanceERMCost(z, x, lambdaN), dt);
+%             testCase.verifyEqual(df(:,1), df_est, 'RelTol',testCase.tol, 'Distance ERM stepsize gradient inaccurate');
+            df_est = testCase.finiteDifference(@(z) testCase.optimizer.normalDistanceERMCost(z, lambdaN), x);
             testCase.verifyEqual(df(:,2:numel(x)+1), df_est, 'RelTol',testCase.tol,'Distance ERM state gradient inaccurate');
-            df_est = testCase.finiteDifference(@(z) testCase.optimizer.normalDistanceERMCost(dt, x, z), lambdaN);
+            df_est = testCase.finiteDifference(@(z) testCase.optimizer.normalDistanceERMCost(x, z), lambdaN);
             testCase.verifyEqual(df(:,numel(x)+2:end), df_est, 'RelTol', testCase.tol, 'Distance ERM Force gradient inaccurate');
             
         end

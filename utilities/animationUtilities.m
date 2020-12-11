@@ -298,7 +298,7 @@ classdef animationUtilities
             end
             
         end
-        function visualizeMultiTrajectory(model, seq, savename, labels)
+        function visualizeMultiTrajectory(model, seq, savename, labels, colors)
             %% VisualizeMultiTrajectory
 
             % Create a handle to the axis
@@ -325,7 +325,13 @@ classdef animationUtilities
                     labels{k} = sprintf('Trajectory %d',k);
                 end
             end
-            
+            % Check for colors
+            if nargin ~= 5 
+               colors = lines(numTraj); 
+            end
+            if  size(colors, 1) ~= numTraj
+               error('Colors must be %dx3',numTraj); 
+            end
             N = size(seq{1},2);
             for k = 2:numTraj
                 if N ~= size(seq{k},2)
@@ -340,8 +346,7 @@ classdef animationUtilities
             xdata = cell(numTraj,N);
             ydata = cell(numTraj,N);
             xlims = zeros(1,2);
-            ylims = zeros(1,2);
-            
+            ylims = zeros(1,2);  
             
             % Draw all the frames first
             for k = 1:numTraj
@@ -359,6 +364,7 @@ classdef animationUtilities
             xlims = xlims .* (1 + [-1,1].*sign(xlims).*0.05);
             ylims = ylims .* (1 + [-1, 1].*sign(ylims).*0.05);
             % Make the limits square
+            
             xr = range(xlims);
             yr = range(ylims);
             if xr > yr
@@ -366,7 +372,8 @@ classdef animationUtilities
             else
                 xlims = xlims * (yr/xr);
             end
-            
+            xlims = [-0.5, 7.5];
+            ylims = [-0.5, 7.5];
             % Now draw the terrain
             [xterrain, yterrain] = model.terrain.draw(xlims, N);
             % Extend the terrain so we can draw it as a patch
@@ -377,14 +384,14 @@ classdef animationUtilities
             hold on;
             % Draw the first point on each of the trajectories
             sketches = cell(1,numTraj);
-            colors = lines(numTraj);
+            
             for k = 1:numTraj
-                sketches{k} = patch(ax, xdata{k,1},ydata{k,1},colors(k,:),'LineWidth',1.5,'DisplayName',labels{k});
+                sketches{k} = patch(ax, xdata{k,1},ydata{k,1},colors(k,:),'LineWidth',1,'DisplayName',labels{k},'FaceAlpha',0.6);
             end
             % Set the axis limits
             set(ax,'XLimMode','manual','YLimMode','manual','xlim',xlims,'ylim',ylims);
-            legend show;
-            legend boxoff;
+           legend show;
+           legend boxoff;
             % Now draw all the frames in sequence and create a video
             for n = 1:N
                 set([sketches{:}], {'XData'},xdata(:,n), {'YData'},ydata(:,n));

@@ -69,24 +69,25 @@ inrange= @(x, lb, ub) (isPosInteger(x) || x == 0) && (x >= lb) && (x <= ub);
 
 % Set default values for contact-implicit trajectory optimization
 addParameter(parser, 'integration_method', RobustContactImplicitTrajectoryOptimizer.BACKWARD_EULER, @(x) inrange(x, 1, 4));
-addParameter(parser, 'uncertainty_source', RobustContactImplicitTrajectoryOptimizer.NO_UNCERTAINTY, @(x) inrange(x, 0, 3));
+addParameter(parser, 'nlcc_mode',2, @(x) inrange(x, 1, 5));
+addParameter(parser, 'compl_slack',0, isNonnegScalar);
 addParameter(parser, 'time_option', 1, @(x) inrange(x, 1, 2));
 addParameter(parser, 'time_constraints', RobustContactImplicitTrajectoryOptimizer.BOUNDTIME, @(x) inrange(x, 1, 3));
-addParameter(parser, 'nlcc_mode',2, @(x) inrange(x, 1, 5));
 addParameter(parser, 'relax_cost',1, isPosScalar);
-addParameter(parser, 'compl_slack',0, isNonnegScalar);
+addParameter(parser, 'dynamicsMultiplier',1,isPosScalar);
+addParameter(parser, 'forceMultiplier',1,isPosScalar);
+addParameter(parser, 'lincc_mode',1,@(x)inrange(x, 1, 1));
+addParameter(parser, 'lincc_slack', 0, isNonnegScalar);
 % Set the default values for Robust-Specific options
-addParameter(parser, 'distribution', RobustContactImplicitTrajectoryOptimizer.GAUSSIAN, @(x) inrange(x, 1, 2));
-addParameter(parser, 'heightVariance', 1, isPosScalar);
-addParameter(parser, 'frictionVariance', 1, isPosScalar);
-addParameter(parser, 'ermScaling', RobustContactImplicitTrajectoryOptimizer.NOSCALE, @(x) inrange(x, 1, 3));
 addParameter(parser, 'contactCostMultiplier',0 , isNonnegScalar);
-addParameter(parser, 'ermMode',1,@(x) inrange(x, 1, 4));
-addParameter(parser, 'distanceScaling',1, isPosScalar);
-addParameter(parser, 'ermFrictionBias',0, isNonnegScalar);
 addParameter(parser, 'frictionCostMultiplier', 1, isPosScalar);
 addParameter(parser, 'distanceCostMultiplier', 1, isPosScalar);
-addParameter(parser, 'dynamicsMultiplier',1,isPosScalar);
+addParameter(parser, 'uncertainty_source', RobustContactImplicitTrajectoryOptimizer.NO_UNCERTAINTY, @(x) inrange(x, 0, 3));
+addParameter(parser, 'heightVariance', 1, isPosScalar);
+addParameter(parser, 'frictionVariance', 1, isPosScalar);
+addParameter(parser, 'distribution', RobustContactImplicitTrajectoryOptimizer.GAUSSIAN, @(x) inrange(x, 1, 2));
+addParameter(parser, 'distanceScaling',1, isPosScalar);
+addParameter(parser, 'ermFrictionBias',0, isNonnegScalar);
 % Parse the inputs
 parse(parser, varargin{:});
 % Get the results from the input parser

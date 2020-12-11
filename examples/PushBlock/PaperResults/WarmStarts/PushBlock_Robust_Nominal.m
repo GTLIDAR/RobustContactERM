@@ -12,7 +12,7 @@ add_drake;
 cd(here);
 addpath(genpath('PATH_LCP'));
 
-name = 'PushBlock_Robust_NominalWorseCase';
+name = 'PushBlock_Robust_Nominal';
 % Create the plant model
 dt = 0.01;
 plant = Block();
@@ -33,25 +33,25 @@ N = numel(t_init);
 options.integration_method = RobustContactImplicitTrajectoryOptimizer.BACKWARD_EULER;
 options.contactCostMultiplier = 5;
 options.uncertainty_source = RobustContactImplicitTrajectoryOptimizer.NO_UNCERTAINTY;
-options.complementarity_solver = RobustContactImplicitTrajectoryOptimizer.NONE;
 options.frictionVariance = 0.1;
+options.forceMultiplier = 0.01;
 prob = RobustContactImplicitTrajectoryOptimizer(plant, N, Tf, options);
 
 % Add a running cost
-%prob = prob.addRunningCost(@(t,x,u)cost2(t,x,u,xf));
-prob = prob.addRunningCost(@cost);
+prob = prob.addRunningCost(@(t,x,u)cost2(t,x,u,xf));
+%prob = prob.addRunningCost(@cost);
 % Add a terminal cost
 %prob = prob.addFinalCost(@terminalCost);
 % Add the initial and final value constraints
 prob = prob.addStateConstraint(ConstantConstraint(x0),1);
 prob = prob.addStateConstraint(ConstantConstraint(xf),N);
-
+prob = prob.enableCostDisplay();
 % Set the options for the solver
 prob = prob.setSolver('snopt');
 prob = prob.setSolverOptions('snopt','MajorFeasibilityTolerance',1e-6);     %Default: 1e-6
 prob = prob.setSolverOptions('snopt','MajorOptimalityTolerance',1e-6);      %Default: 1e-6
-prob = prob.setSolverOptions('snopt','MinorFeasibilityTolerance',1e-3);     %Default: 1e-6
-prob = prob.setSolverOptions('snopt','ScaleOption',1);                      %Default: 1
+prob = prob.setSolverOptions('snopt','MinorFeasibilityTolerance',1e-6);     %Default: 1e-6
+prob = prob.setSolverOptions('snopt','ScaleOption',2);                      %Default: 1
 prob = prob.setSolverOptions('snopt','IterationsLimit',50000);              %Default: 10,000
 prob = prob.setSolverOptions('snopt','ElasticWeight',10^4);                 %Default: 10^4
 prob = prob.setSolverOptions('snopt','MajorIterationsLimit',5000);          %Default: 1000
@@ -70,7 +70,7 @@ tic;
 [xtraj, utraj, ltraj, z, F, info] = prob.solveTraj(t_init, traj_init);
 toc
 
-save(name,'plant','xtraj','utraj','ltraj','t_init','z','F','info','plant','x0','xf');
+%save(name,'plant','xtraj','utraj','ltraj','t_init','z','F','info','plant','x0','xf');
 
 % Notes on the output of prob.solveTraj:
 %   Return values:
@@ -122,7 +122,7 @@ xlabel('Time (s)');
 q = x(1:3,:);
 
 %utilities.animator(ax,draw,x(1:3,:));
-utilities.trajectoryAnimator(plant, q, [], [name,'.avi']);
+utilities.trajectoryAnimator(plant, q, []);
 end
 
 

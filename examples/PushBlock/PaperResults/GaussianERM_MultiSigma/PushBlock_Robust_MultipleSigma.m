@@ -18,11 +18,11 @@ sigma = logspace(log10(sigma_low), log10(sigma_high), N_sigma);
 
 options.uncertainty_source = RobustContactImplicitTrajectoryOptimizer.FRICTION_UNCERTAINTY;
 options.distribution = RobustContactImplicitTrajectoryOptimizer.GAUSSIAN;
-options.complementarity_solver = RobustContactImplicitTrajectoryOptimizer.NONE;
 options.integration_method = RobustContactImplicitTrajectoryOptimizer.BACKWARD_EULER;
 options.contactCostMultiplier = 1000000;
 % Load the nominal case
-nominal = load('WarmStarts/PushBlock_Robust_NCP_NominalRefined.mat');
+nominal = load('../../PaperResults/WarmStarts/PushBlock_Robust_NCP_NominalRefined.mat');
+%nominal = load('WarmStarts/PushBlock_Robust_NCP_NominalRefined.mat');
 plant = nominal.plant;
 t_init = nominal.t_init;
 plant.terrain.friction_coeff = 0.5;
@@ -58,7 +58,7 @@ for n = 1:length(sigma)
 end
 
 % Save the data structure
-save(['PushBlock_MultiSigma_', name,'.mat'],'trajData');
+%save(['PushBlock_MultiSigma_', name,'.mat'],'trajData');
 
 % Plot the data all at once
 plotAllData(trajData,name,'sigma',nominal);

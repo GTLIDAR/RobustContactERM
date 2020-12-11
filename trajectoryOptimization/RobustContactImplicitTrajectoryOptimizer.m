@@ -337,12 +337,12 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
             % Get the normal distance and its gradient
             [phi, ~, ~, ~, ~, ~, ~, ~, Jn] = obj.plant.contactConstraints(x(1:nQ), false, obj.options.active_collision_options);
             % Expand the derivative of the distance function
-            dphi = [zeros(obj.numContacts, 1), Jn, zeros(obj.numContacts, nQ + nL)];
-            dlambda = [zeros(obj.numContacts,1),zeros(obj.numContacts, nX), eye(obj.numContacts)];
+            dphi = [Jn, zeros(obj.numContacts, nQ + nL)];
+            dlambda = [zeros(obj.numContacts, nX), eye(obj.numContacts)];
             
             % Calculate the variance of the ERM
             sigma = ones(obj.numContacts, 1) * obj.options.heightVariance;
-            dsigma = zeros(obj.numContacts,1 + numel(x) + numel(lambda));
+            dsigma = zeros(obj.numContacts, numel(x) + numel(lambda));
             
             % Scale the distance function
             phi = obj.options.distanceScaling * phi;
@@ -515,10 +515,7 @@ classdef RobustContactImplicitTrajectoryOptimizer < ContactImplicitTrajectoryOpt
                 frictionIdx = obj.lambda_inds(:,i);
                 obj = obj.addCost(friction, frictionIdx);
             end
-            % If desired, also add in the friction constraint
-            if obj.options.ermMode == RobustContactImplicitTrajectoryOptimizer.ERM_COMBINED
-               obj = obj.addFrictionConstraint(); 
-            end
+
         end
         function obj = addSlidingConstraint(obj)
             %% addSlidingConstraint: adds the complementarity constraint for sliding velocity to the problem

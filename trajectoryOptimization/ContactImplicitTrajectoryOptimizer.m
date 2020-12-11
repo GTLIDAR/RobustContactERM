@@ -146,7 +146,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            
            % Set the relaxation variables
            if obj.options.nlcc_mode == 5
-               [obj, inds] = obj.addDecisionVariable(N-1);
+               [obj, inds] = obj.addDecisionVariablobj.options.forceMultipliere(N-1);
                obj.slack_inds = inds;
            end
            
@@ -644,7 +644,6 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            v0 = x0(nQ+1:nQ+nV);
            q1 = x1(1:nQ);
            v1 = x1(nQ+1:nQ+nV);
-           
            % FORWARD INTEGRATION: Get the values of the dynamics at the
            % beginning of the interval
            [H, C, B, dH, dC, dB] = obj.plant.manipulatorDynamics(q0, v0);
@@ -663,7 +662,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
            dHv = squeeze(sum(dH .* (v1 - v0)', 2));
            dBu = squeeze(sum(dB .* u', 2));
            dJl = squeeze(sum(dJ .* lambda', 2));
-           dfv = [-(B*u - C), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -dJl, H, -h*B, -obj.options.forceMultiplier*J'];
+           dfv = [-(B*u - C), dHv - h*(dBu - dC(:,1:nQ)), -H + h*dC(:,nQ+1:nQ+nV), -dJl, H, -h*B, -J' * obj.options.forceMultiplier];
            % Add joint limits
            if obj.nJl > 0
                Jl = [eye(nQ); -eye(nQ)];
@@ -717,7 +716,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             nV = obj.plant.getNumVelocities;
             nU = obj.plant.getNumInputs;
             nL = length(lambda);
-            
+           
             % Ensure the velocities and positions have equal number of
             % elements
             assert(nQ == nV);
@@ -743,11 +742,13 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             dfq = [-v1,-eye(nQ),zeros(nQ,nV),eye(nQ),-h*eye(nV),zeros(nQ,nU + nL)];
             % Calculate the forward dynamics defects (velocity equation)
             fv = H*(v1 - v0) + h*(C - B*u) - J'*lambda;
+            %fv = H*(v1 - v0) + h*(C - B*u - J'*lambda);
             % Calculate the derivative
             dHv = squeeze(sum(dH .* (v1 - v0)', 2));
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
             dfv = [C - B*u, zeros(nV, nQ), -H, dHv + h*(dC(:,1:nQ) - dBu) - dJl, H + h*dC(:,nQ+1:nQ+nV), -h*B, -obj.options.forceMultiplier*J'];
+            %dfv = [C - B*u - J'*lambda, zeros(nV, nQ), -H, dHv + h*(dC(:,1:nQ) - dBu - dJl), H + h*dC(:,nQ+1:nQ+nV), -h*B, -h*J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
@@ -1178,7 +1179,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             % Make a figure
             if iteration  == 1
                 % Plot the figures
-                costfigure = figure();
+                costfigure = figure('Name','Costs And Constraints');
                 costlines = cell(length(cstrNames) + length(costNames),1);
                 subplot(2,1,1);
                 for n = 1:length(costNames)
@@ -1271,7 +1272,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
                % Now get the value of the constraint
                val{n} = obj.nlcon{n}.eval_handle(args{:});
                % Calculate the maximum violation
-               viol = max(obj.nlcon{n}.lb - val{n}, val{n} - obj.nlcon{n}.ub);
+               viol = max(max(obj.nlcon{n}.lb - val{n},0), max(val{n} - obj.nlcon{n}.ub,0));
                % Eliminate the infinities
                viol(isinf(viol)) = 0;
                % Take the norm
