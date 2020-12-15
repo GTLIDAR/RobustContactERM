@@ -1,0 +1,48 @@
+Date: 14-Dec-2020
+Author: ldrnach
+
+Plant model: Block
+
+Run Settings:
+	Duration: [1.00, 1.00]
+	Number of Knot Points: 101
+	Included Boundary Conditions? true
+	Included Running Cost? true
+	Included Final Cost? false
+	Trajectory Initialization: /home/ldrnach/Documents/MATLAB/ContactModelingSCP/examples/PushBlock/Revisions/ConvergenceTests_Tight/Nominal/PushBlock_Nominal
+
+SNOPT Settings:
+	 ElasticWeight: 1.00e+04
+	 IterationsLimit: 5.00e+04
+	 MajorFeasibilityTolerance: 1.00e-06
+	 MajorIterationsLimit: 5.00e+03
+	 MajorOptimalityTolerance: 1.00e-06
+	 MinorFeasibilityTolerance: 1.00e-06
+	 MinorIterationsLimit: 5.00e+02
+	 ScaleOption: 1.00e+00
+	 SuperbasicsLimit: 1.50e+03
+
+RobustContactImplicitTrajectoryOptimizer Settings: 
+	 compl_slack: 0
+	 contactCostMultiplier: 0
+	 distanceCostMultiplier: 1
+	 distanceScaling: 1
+	 distribution: 1
+	 dynamicsMultiplier: 1
+	 ermFrictionBias: 0
+	 forceMultiplier: 1
+	 frictionCostMultiplier: 1
+	 frictionVariance: 1
+	 heightVariance: 1
+	 integration_method: 2
+	 lincc_mode: 1
+	 lincc_slack: 0
+	 nlcc_mode: 1
+	 relax_cost: 1
+	 time_constraints: 3
+	 time_option: 1
+	 uncertainty_source: 0
+
+SNOPT terminated after 165.21 seconds with exit status 1
+
+Notes:

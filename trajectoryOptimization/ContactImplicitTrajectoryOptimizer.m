@@ -710,7 +710,7 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             %        f = x[k+1] - x[k] - hg(x[k+1])
             
             % Scale the force variables
-            lambda = obj.options.forceMultiplier * lambda;
+            %lambda = obj.options.forceMultiplier * lambda;
             % Get some parameters about the system
             nQ = obj.plant.getNumPositions;
             nV = obj.plant.getNumVelocities;
@@ -741,14 +741,14 @@ classdef ContactImplicitTrajectoryOptimizer < DirectTrajectoryOptimization
             fq = q1 - q0 - h * v1;
             dfq = [-v1,-eye(nQ),zeros(nQ,nV),eye(nQ),-h*eye(nV),zeros(nQ,nU + nL)];
             % Calculate the forward dynamics defects (velocity equation)
-            fv = H*(v1 - v0) + h*(C - B*u) - J'*lambda;
-            %fv = H*(v1 - v0) + h*(C - B*u - J'*lambda);
+            %fv = H*(v1 - v0) + h*(C - B*u) - J'*lambda;
+            fv = H*(v1 - v0) + h*(C - B*u - J'*lambda);
             % Calculate the derivative
             dHv = squeeze(sum(dH .* (v1 - v0)', 2));
             dBu = squeeze(sum(dB .* u', 2));
             dJl = squeeze(sum(dJ .* lambda', 2));
-            dfv = [C - B*u, zeros(nV, nQ), -H, dHv + h*(dC(:,1:nQ) - dBu) - dJl, H + h*dC(:,nQ+1:nQ+nV), -h*B, -obj.options.forceMultiplier*J'];
-            %dfv = [C - B*u - J'*lambda, zeros(nV, nQ), -H, dHv + h*(dC(:,1:nQ) - dBu - dJl), H + h*dC(:,nQ+1:nQ+nV), -h*B, -h*J'];
+            %dfv = [C - B*u, zeros(nV, nQ), -H, dHv + h*(dC(:,1:nQ) - dBu) - dJl, H + h*dC(:,nQ+1:nQ+nV), -h*B, -obj.options.forceMultiplier*J'];
+            dfv = [C - B*u - J'*lambda, zeros(nV, nQ), -H, dHv + h*(dC(:,1:nQ) - dBu - dJl), H + h*dC(:,nQ+1:nQ+nV), -h*B, -h*J'];
             % Add joint limits
             if obj.nJl > 0
                 Jl = [eye(nQ); -eye(nQ)];
